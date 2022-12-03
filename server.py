@@ -1,6 +1,7 @@
 import socket
 from _thread import *
 import os
+import shutil
 import re
 import hashlib
 
@@ -15,6 +16,8 @@ class User:
         self.log = None
         self.passwd = None
         self.connection = connect
+        self.path = None
+        self.dir = None # /home
 
     def check_login(self):
         with open("passwords.txt", 'r') as f:
@@ -73,7 +76,17 @@ class User:
             except WindowsError:
                 self.logout('unexpected')
                 return False
+        self.create_directory()
         return True
+
+    def create_directory(self):
+        path = os.getcwd() + "/D/" + self.log + "/home"
+        self.path = os.getcwd() + "/D/" + self.log
+        self.dir = os.getcwd() + "/D/" + self.log + "/home"
+        os.makedirs(path)
+
+    def del_directory(self):
+        shutil.rmtree(self.path)
 
     def logout(self, unexpected=None):
         global count_users, clr_sessions
@@ -90,6 +103,7 @@ class User:
                     file.remove(self.log+'\n')
                 for line in file:
                     f.write(line)
+        self.del_directory()
         if unexpected is not None:
             print('Error: lost connection with', self.log)
         else:
