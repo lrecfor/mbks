@@ -86,7 +86,7 @@ class User:
         os.makedirs(path)
 
     def del_directory(self):
-        shutil.rmtree(self.path)
+        shutil.rmtree(self.path, ignore_errors=True)
 
     def logout(self, unexpected=None):
         global count_users, clr_sessions
@@ -107,8 +107,35 @@ class User:
         if unexpected is not None:
             print('Error: lost connection with', self.log)
         else:
-            self.connection.send(str(self.log + ' successfully logged out\n').encode())
             print(self.log + ' logged out')
+            self.connection.send(str(self.log + ' successfully logged out\n'
+                                                'Dou you wanna continue with another account?\n(y/n) ').encode())
+            data = self.connection.recv(2048)
+            if data.decode('utf-8')[0] == 'y':
+                self.auth()
+            else:
+                self.connection.send(str("Stop").encode())
+
+    def help(self, command_string):
+        if len(list(command_string.split())) != 2:
+            self.connection.send("Missing command.\nUsage: help [command]\nDisplay information about COMMAND.\n".encode())
+        else:
+            command_name = command_string.split()[1]
+            if command_name == "write":
+                self.connection.send("Usage: write [filename] [text]\nPrint TEXT in the file.\n".encode())
+            elif command_name == "read":
+                self.connection.send("Usage: read [filename]\nRead and display file content.\n".encode())
+            elif command_name == "help":
+                self.connection.send("Usage: help [command]\nDisplay information about COMMAND.\n".encode())
+            elif command_name == "ls":
+                self.connection.send("Usage: ls [directory]\nList information about the DIRECTORY.\n".encode())
+            elif command_name == "logout":
+                self.connection.send("Usage: logout\nLog the user out of a system.\n".encode())
+            elif command_name == "pwd":
+                self.connection.send("Usage: pwd\nPrint the name of the current working directory.\n".encode())
+            else:
+                string = 'command ' + command_name + ' not found.\n'
+                self.connection.send(string.encode())
 
 
 def multi_threaded_client(connection, user):
@@ -118,11 +145,27 @@ def multi_threaded_client(connection, user):
         while True:
             try:
                 data = connection.recv(2048)
-                response = 'Server message: ' + data.decode('utf-8') + '\n'
+                if data.decode('utf-8') == 'Stop':
+                    break
+                print(user.log + ': ', data.decode('utf-8'))
                 if not data:
                     user.logout('unexpected')
                     break
-                connection.sendall(str.encode(response))
+                command = data.split()[0].decode('utf-8')
+                if command == 'write':
+                    connection.sendall(str.encode(command))
+                elif command == 'read':
+                    connection.sendall(str.encode(command))
+                elif command == 'help':
+                    user.help(data.decode('utf-8'))
+                elif command == 'ls':
+                    connection.sendall(str.encode(command))
+                elif command == 'logout':
+                    user.logout()
+                elif command == 'pwd':
+                    connection.sendall(str.encode(command))
+                else:
+                    connection.sendall(str.encode("command wasn't found\n"))
             except WindowsError:
                 user.logout('unexpected')
                 break
@@ -141,6 +184,11 @@ if __name__ == "__main__":
         print(str(e))
     print('Socket is listening..')
     ServerSideSocket.listen(5)
+
+    with open('sessions.txt', 'wb'):
+        pass
+    shutil.rmtree(os.getcwd() + "/D", ignore_errors=True)
+    os.mkdir(os.getcwd() + "/D")
 
     while True:
         Client, address = ServerSideSocket.accept()

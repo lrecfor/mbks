@@ -11,9 +11,11 @@ except socket.error as e:
 
 while True:
     res = ClientMultiSocket.recv(1024)
+    if res.decode('utf-8') == 'Stop':
+        ClientMultiSocket.send("Stop".encode())
+        ClientMultiSocket.close()
+        break
     print(res.decode('utf-8'), end='')
     ClientMultiSocket.send(str.encode(input()))
-    if 'out' in res.decode('utf-8').split():
-        ClientMultiSocket.close()
 ClientMultiSocket.close()
 
