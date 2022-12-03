@@ -139,17 +139,21 @@ class Server:
             else:
                 self.connection.send(str("Stop").encode())
 
-    def ls(self, dir_name):
-        print(dir_name)
-        if len(dir_name.split()) == 1:
+    def ls(self, command_string):
+        if len(list(command_string.split())) == 1:
             dir_name = self.user.dir
+        else:
+            command_string = command_string[2:]
+            dir_name = ' '.join(command_string.split())
+            print(dir_name)
         files = os.listdir(dir_name)
         files_list = ''
         for file in files:
             files_list += file + ' '
-        print(files)
-        print(files_list)
-        self.connection.send(str(files_list + '\n').encode())
+        files_list += '\n'
+        if len(files_list) == 0:
+            files_list = '(empty)\n'
+        self.connection.send(str.encode(files_list))
 
 
 def multi_threaded_client(connection, user):
