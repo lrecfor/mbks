@@ -105,7 +105,7 @@ class Server:
             elif command_name == "pwd":
                 self.connection.send("Usage: pwd\nPrint the name of the current working directory.\n".encode())
             else:
-                string = 'Command ' + command_name + ' not found.\n'
+                string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
 
     def pwd(self):
@@ -155,6 +155,28 @@ class Server:
             files_list = '(empty)\n'
         self.connection.send(str.encode(files_list))
 
+    def write(self, command_string):
+        print(command_string)
+
+    def read(self, command_string):
+        if len(list(command_string.split())) > 2:
+            command_string = command_string[5:]
+            file_name = ' '.join(command_string.split())
+        else:
+            file_name = command_string.split()[1]
+            if file_name[1] != ':':
+                file_name = self.user.dir + '\\' + file_name
+        try:
+            with open(file_name, 'r') as f:
+                text = f.read()
+        except IOError:
+            self.connection.send(str.encode('Error: incorrect file name.\n'))
+            return False
+        self.connection.send(str.encode(str(len(text))))
+        while len(text) > 0:
+            self.connection.send(str.encode(text[:1024] + "\n"))
+            text = text[1024:]
+
 
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
@@ -171,9 +193,17 @@ def multi_threaded_client(connection, user):
                     break
                 command = data.split()[0].decode('utf-8')
                 if command == 'write':
-                    connection.send(str.encode(command + '\n'))
+                    if len(list(data.decode('utf-8').split())) == 2:
+                        connection.send(str.encode("Error: missing argument.\n"))
+                    else:
+                        if not sr.write(data.decode('utf-8')):
+                            continue
                 elif command == 'read':
-                    connection.send(str.encode(command + '\n'))
+                    if len(list(data.decode('utf-8').split())) == 1:
+                        connection.send(str.encode("Error: missing file name.\n"))
+                    else:
+                        if not sr.read(data.decode('utf-8')):
+                            continue
                 elif command == 'help':
                     sr.help(data.decode('utf-8'))
                 elif command == 'ls':
@@ -183,7 +213,7 @@ def multi_threaded_client(connection, user):
                 elif command == 'pwd':
                     sr.pwd()
                 else:
-                    connection.send(str.encode("Command wasn't found.\n"))
+                    connection.send(str.encode("Error: command wasn't found.\n"))
             except WindowsError:
                 sr.logout('unexpected')
                 break
