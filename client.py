@@ -1,4 +1,5 @@
 import socket
+import codecs
 
 ClientMultiSocket = socket.socket()
 host = '127.0.0.1'
@@ -27,16 +28,16 @@ while True:
         break
 
     elif response.isdigit():   # read fun, getting text by blocks(1024)
+        dec = codecs.getincrementaldecoder('utf8')()
         amount_received = 0
         amount_expected = int(response)
         while amount_received < amount_expected:
             text_rec = ClientMultiSocket.recv(1024)
-            amount_received += len(text_rec)
-            if not text_rec and amount_received != amount_expected:
-                print("Error: data was corrupted\n")
-                break
-            print(text_rec.decode('utf-8'), end='')
-
+            txt = dec.decode(text_rec)
+            amount_received += len(txt)
+            print(txt, end='')
+        print('\n')
+# C:/Users/Дана Иманкулова/projects/python/mbks/близнецы.txt
     else:
         print(response, end='')
 

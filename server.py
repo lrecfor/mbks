@@ -205,14 +205,15 @@ class Server:
             if file_name[1] != ':':
                 file_name = self.user.dir + '\\' + file_name
         try:
-            with open(file_name, 'r') as f:
+            with open(file_name, 'r', encoding='utf-8') as f:
                 text = f.read()
         except IOError:
             self.connection.send(str.encode('Error: incorrect file name.\n'))
             return False
         self.connection.send(str.encode(str(len(text))))
         while len(text) > 0:
-            self.connection.send(str.encode(text[:1024] + "\n"))
+            text_send = text[:1024]
+            self.connection.send(str(text_send).encode('utf-8'))
             text = text[1024:]
 
     # admins functions
