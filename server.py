@@ -84,7 +84,10 @@ class Server:
         os.makedirs(path)
 
     def del_directory(self):
-        shutil.rmtree(self.user.path, ignore_errors=True)
+        try:
+            shutil.rmtree(self.user.path, ignore_errors=True)
+        except OSError:
+            pass
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -156,7 +159,29 @@ class Server:
         self.connection.send(str.encode(files_list))
 
     def write(self, command_string):
-        print(command_string)
+        amount_received = 0
+        if not command_string.split()[2].isdigit():
+            print("Error: something wrong with received data.\n")
+            self.connection.send(str.encode("Error: something wrong with received data.\n"))
+            return False
+        else:
+            self.connection.send(str.encode("Ok"))
+        amount_expected = int(command_string.split()[2])
+        file_name = command_string.split()[1]
+        with open(file_name, "w") as f:
+            while amount_received < amount_expected:
+                try:
+                    text_rec = self.connection.recv(2048).decode('utf-8')
+                except UnicodeDecodeError:
+                    text_rec = ''
+                amount_received += len(text_rec)
+                if not text_rec and amount_received != amount_expected:
+                    print("Error: data was corrupted\n")
+                    with open(file_name, "wb"):
+                        pass
+                    return False
+                f.write(str(text_rec))
+        return True
 
     def read(self, command_string):
         if len(list(command_string.split())) > 2:
@@ -193,7 +218,10 @@ def multi_threaded_client(connection, user):
                     break
                 command = data.split()[0].decode('utf-8')
                 if command == 'write':
-                    if len(list(data.decode('utf-8').split())) == 2:
+                    args = len(list(data.decode('utf-8').split()))
+                    if args > 3:
+                        connection.send(str.encode("Error: text is too big.\n"))
+                    elif args != 3:
                         connection.send(str.encode("Error: missing argument.\n"))
                     else:
                         if not sr.write(data.decode('utf-8')):
