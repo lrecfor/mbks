@@ -75,7 +75,7 @@ class Server:
 
                 with open("sessions.txt", 'a') as f:
                     f.write(self.user.log + '\n')
-                    self.connection.send(str('You logged in successfully.\n').encode())
+                    self.connection.send(str(self.user.log + ' logged in successfully.\n').encode())
                     count_users += 1
                     done = True
             except WindowsError:
@@ -223,7 +223,7 @@ class Server:
         with open("passwords.txt", 'r') as f:
             logins = f.read()
             if new_user.log in logins.split():
-                self.connection.send("Error: user ia already exist.\n".encode())
+                self.connection.send("Error: user is already exist.\n".encode())
                 return False
         self.connection.send("Password: ".encode())
         new_user.passwd = self.connection.recv(1024).decode()
@@ -238,9 +238,13 @@ class Server:
         self.connection.send(str(new_user.log + " was created successfully.\n").encode())
 
     def userdel(self, user_log):
-        print(user_log)
+        with open("passwords.txt", 'r') as f:
+            logins = f.read().split()
+            if self.user.log not in logins:
+                self.connection.send("Error: login doesn't exist.\n".encode())
+                return False
         if user_log == self.user.log:
-            self.connection.send("Error: suicide is prohibited on the territory of the Russian Federation\n".encode())
+            self.connection.send("Error: suicide is prohibited on the territory of the Russian Federation.\n".encode())
             return False
         with open("sessions.txt", 'r') as f:
             logins = f.read().split()
@@ -257,7 +261,7 @@ class Server:
             lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
         with open("passwords.txt", 'w') as f:
             f.writelines(lines)
-        self.connection.send(str(user_log + " was deleted successfully.").encode())
+        self.connection.send(str(user_log + " was deleted successfully.\n").encode())
 
     def passwd(self, user_log):
         self.connection.send("Enter new password: ".encode())

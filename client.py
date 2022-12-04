@@ -9,15 +9,24 @@ try:
 except socket.error as e:
     print(str(e))
 
+login = ''
 while True:
     response = ClientMultiSocket.recv(1024).decode('utf-8')
 
-    if response == 'Stop':  # if logout
+    if 'logged in' in response:
+        print(response, end='')
+        login = str(response.split()[0] + ': ')
+
+    elif response == 'Login: ' or '(y/n)' in response:
+        print(response, end='')
+        login = ''
+
+    elif response == 'Stop':  # if logout
         ClientMultiSocket.send("Stop".encode())
         ClientMultiSocket.close()
         break
 
-    if response.isdigit():   # read fun, getting text by blocks(1024)
+    elif response.isdigit():   # read fun, getting text by blocks(1024)
         amount_received = 0
         amount_expected = int(response)
         while amount_received < amount_expected:
@@ -31,7 +40,7 @@ while True:
     else:
         print(response, end='')
 
-    message = input()
+    message = input(str(login))
     if message.split()[0] == 'write':   # write fun, message = (write filename text)
         if len(message.split()) < 3:    # missing argument
             ClientMultiSocket.send(str.encode(message))
@@ -47,7 +56,7 @@ while True:
                     text_sent = text_sent[2048:]
             else:
                 print(response, end='')
-        ClientMultiSocket.send(str.encode(input()))
+        ClientMultiSocket.send(str.encode(input(str(login))))
         continue    # return to the start of while
 
     ClientMultiSocket.send(str.encode(message)) # if message != write, send message(input())
