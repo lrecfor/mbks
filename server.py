@@ -277,8 +277,31 @@ class Server:
                 f.writelines(line)
         self.connection.send("passwd: password updated successfully\n".encode())
 
-    def userinfo(self, user_log=None):
-        print(user_log)
+    def userinfo(self, command_string):
+        user_log = None
+        if len(command_string.split()) > 1:
+            user_log = command_string.split()[1]
+        users_string = ''
+        with open("passwords.txt", 'r') as f:
+            lines = f.readlines()
+        if user_log:
+            for line in lines:
+                if user_log in line.split():
+                    users_string += str(line.split()[0] + ' ')
+                    users_string += str(line.split()[1] + ' ')
+                    users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
+                                        + "/" + line.split()[0])
+                    users_string += str(' ordinary\n')
+                    break
+        else:
+            for line in lines:
+                users_string += str(line.split()[0] + ' ')
+                users_string += str(line.split()[1] + ' ')
+                users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
+                                    + "/" + line.split()[0])
+                users_string += str(' ordinary\n')
+        self.connection.send(users_string.encode())
+
 
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
