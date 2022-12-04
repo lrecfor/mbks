@@ -2,9 +2,8 @@ import socket
 from _thread import *
 import os
 import shutil
-import re
 import hashlib
-import user as u
+import users as u
 
 count_users = 0
 clr_sessions = False
@@ -37,10 +36,19 @@ class Server:
             passwd_hash = hashlib.sha256(self.user.passwd.encode())
             passwd = passwd_hash.hexdigest()
             for line in f:
-                if self.user.log == line.split()[0] and passwd == line.split()[1]:
-                    return True
+                if len(line) > 1:
+                    if self.user.log == line.split()[0] and passwd == line.split()[1]:
+                        return True
         self.connection.send("Error: password is incorrect.\nPassword: ".encode())
         return False
+
+    def check_status(self):
+        with open('admins.txt', 'r') as f:
+            logins = f.read().split()
+        if self.user.log in logins:
+            self.user.status = u.Status.admin
+        else:
+            self.user.status = u.Status.ordinary
 
     def auth(self):
         global count_users
@@ -74,6 +82,8 @@ class Server:
                 self.logout('unexpected')
                 return False
         print(self.user.log + ': ' + self.user.log + " logged in successfully.")
+        self.check_status()
+        print(self.user.log + ': ' + 'status -', self.user.status)
         self.create_directory()
         return True
 
@@ -81,7 +91,10 @@ class Server:
         path = os.getcwd() + "/D/" + self.user.log + "/home"
         self.user.path = os.getcwd() + "/D/" + self.user.log
         self.user.dir = os.getcwd() + "/D/" + self.user.log + "/home"
-        os.makedirs(path)
+        try:
+            os.makedirs(path)
+        except OSError:
+            pass
 
     def del_directory(self):
         try:
@@ -167,7 +180,7 @@ class Server:
         else:
             self.connection.send(str.encode("Ok"))
         amount_expected = int(command_string.split()[2])
-        file_name = command_string.split()[1]
+        file_name = str(self.user.dir + '/' + command_string.split()[1])
         with open(file_name, "w") as f:
             while amount_received < amount_expected:
                 try:
@@ -202,6 +215,70 @@ class Server:
             self.connection.send(str.encode(text[:1024] + "\n"))
             text = text[1024:]
 
+    # admins functions
+    def useradd(self):
+        new_user = u.User()
+        self.connection.send("Login: ".encode())
+        new_user.log = self.connection.recv(1024).decode()
+        with open("passwords.txt", 'r') as f:
+            logins = f.read()
+            if new_user.log in logins.split():
+                self.connection.send("Error: user ia already exist.\n".encode())
+                return False
+        self.connection.send("Password: ".encode())
+        new_user.passwd = self.connection.recv(1024).decode()
+        with open("passwords.txt", 'a') as f:
+            hashed_passwd = hashlib.sha256(new_user.passwd.encode('utf-8')).hexdigest()
+            f.write(str('\n' + new_user.log + ' ' + hashed_passwd))
+        # create directory
+        path = os.getcwd() + "/D/" + new_user.log + "/home"
+        new_user.path = os.getcwd() + "/D/" + new_user.log
+        new_user.dir = os.getcwd() + "/D/" + new_user.log + "/home"
+        os.makedirs(path)
+        self.connection.send(str(new_user.log + " was created successfully.\n").encode())
+
+    def userdel(self, user_log):
+        print(user_log)
+        if user_log == self.user.log:
+            self.connection.send("Error: suicide is prohibited on the territory of the Russian Federation\n".encode())
+            return False
+        with open("sessions.txt", 'r') as f:
+            logins = f.read().split()
+        if user_log in logins:
+            self.connection.send("Error: cannot delete user while he is logged in\n".encode())
+        else:
+            try:    #delete directory
+                shutil.rmtree(str("C:/Users/Дана Иманкулова/projects/python/mbks/D"
+                                  + "/" + user_log), ignore_errors=True)
+            except OSError:
+                pass
+        with open("passwords.txt", 'r+') as f:
+            lines = f.readlines()
+            lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
+        with open("passwords.txt", 'w') as f:
+            f.writelines(lines)
+        self.connection.send(str(user_log + " was deleted successfully.").encode())
+
+    def passwd(self, user_log):
+        self.connection.send("Enter new password: ".encode())
+        new_passwd = self.connection.recv(1024).decode()
+        self.connection.send("Retype new password: ".encode())
+        re_new_passwd = self.connection.recv(1024).decode()
+        if new_passwd != re_new_passwd:
+            self.connection.send("Error: passwords do not match\n".encode())
+            return False
+        hashed_new_passwd = hashlib.sha256(new_passwd.encode('utf-8')).hexdigest()
+        with open("passwords.txt", 'r+') as f:
+            lines = f.readlines()
+        with open("passwords.txt", 'w') as f:
+            for line in lines:
+                if user_log in line:
+                    line = str(user_log + ' ' + hashed_new_passwd + '\n')
+                f.writelines(line)
+        self.connection.send("passwd: password updated successfully\n".encode())
+
+    def userinfo(self, user_log=None):
+        print(user_log)
 
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
@@ -221,14 +298,17 @@ def multi_threaded_client(connection, user):
                     args = len(list(data.decode('utf-8').split()))
                     if args > 3:
                         connection.send(str.encode("Error: text is too big.\n"))
+                        continue
                     elif args != 3:
                         connection.send(str.encode("Error: missing argument.\n"))
+                        continue
                     else:
                         if not sr.write(data.decode('utf-8')):
                             continue
                 elif command == 'read':
                     if len(list(data.decode('utf-8').split())) == 1:
                         connection.send(str.encode("Error: missing file name.\n"))
+                        continue
                     else:
                         if not sr.read(data.decode('utf-8')):
                             continue
@@ -240,6 +320,28 @@ def multi_threaded_client(connection, user):
                     sr.logout()
                 elif command == 'pwd':
                     sr.pwd()
+                elif sr.user.status == u.Status.admin:
+                    if command == 'useradd':
+                        if len(data.split()) > 1:
+                            connection.send("Error: too many arguments\n".encode())
+                            continue
+                        if not sr.useradd():
+                            continue
+                    elif command == 'userdel':
+                        if len(data.split()) != 2:
+                            connection.send("Error: missing argument\n".encode())
+                            continue
+                        if not sr.userdel(data.decode('utf-8').split()[1]):
+                            continue
+                    elif command == 'passwd':
+                        if len(data.split()) != 2:
+                            connection.send("Error: missing argument\n".encode())
+                        sr.passwd(data.decode('utf-8').split()[1])
+                    elif command == 'userinfo':
+                        sr.userinfo(data.decode('utf-8'))
+                    else:
+                        connection.send(str.encode("Error: command wasn't found.\n"))
+                        continue
                 else:
                     connection.send(str.encode("Error: command wasn't found.\n"))
             except WindowsError:
