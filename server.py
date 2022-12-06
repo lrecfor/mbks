@@ -3,6 +3,7 @@ from _thread import *
 import os
 import shutil
 import hashlib
+import codecs
 import users as u
 
 count_users = 0
@@ -172,28 +173,18 @@ class Server:
         self.connection.send(str.encode(files_list))
 
     def write(self, command_string):
-        amount_received = 0
-        if not command_string.split()[2].isdigit():
-            print("Error: something wrong with received data.\n")
-            self.connection.send(str.encode("Error: something wrong with received data.\n"))
-            return False
+        amount_expected = command_string.split()[2]
+        text = ' '.join(list(command_string.split()[3:]))
+        amount_received = len(text)
+        if amount_received == amount_expected:
+            self.connection.send(str.encode("Error: data was corrupted.\n"))
         else:
-            self.connection.send(str.encode("Ok"))
-        amount_expected = int(command_string.split()[2])
-        file_name = str(self.user.dir + '/' + command_string.split()[1])
-        with open(file_name, "w") as f:
-            while amount_received < amount_expected:
-                try:
-                    text_rec = self.connection.recv(2048).decode('utf-8')
-                except UnicodeDecodeError:
-                    text_rec = ''
-                amount_received += len(text_rec)
-                if not text_rec and amount_received != amount_expected:
-                    print("Error: data was corrupted\n")
-                    with open(file_name, "wb"):
-                        pass
-                    return False
-                f.write(str(text_rec))
+            self.connection.send(str.encode('File was written successfully.\n'))
+            file_name = command_string.split()[1]
+            if file_name[1] != ':':
+                file_name = str(self.user.dir + '/' + command_string.split()[1])
+            with open(file_name, "w") as f:
+                f.write(text)
         return True
 
     def read(self, command_string):
@@ -314,6 +305,7 @@ def multi_threaded_client(connection, user):
     if sr.auth():
         while True:
             try:
+                print("wait for data")
                 data = connection.recv(2048)
                 if data.decode('utf-8') == 'Stop':
                     break
@@ -324,10 +316,7 @@ def multi_threaded_client(connection, user):
                 command = data.split()[0].decode('utf-8')
                 if command == 'write':
                     args = len(list(data.decode('utf-8').split()))
-                    if args > 3:
-                        connection.send(str.encode("Error: text is too big.\n"))
-                        continue
-                    elif args != 3:
+                    if args < 3:
                         connection.send(str.encode("Error: missing argument.\n"))
                         continue
                     else:
@@ -398,6 +387,7 @@ if __name__ == "__main__":
 
     while True:
         Client, address = ServerSideSocket.accept()
+        # Client.settimeout(1)
         print('Connected to: ' + address[0] + ':' + str(address[1]))
         start_new_thread(multi_threaded_client, (Client, address))
         ThreadCount += 1

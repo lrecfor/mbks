@@ -1,5 +1,6 @@
 import socket
 import codecs
+import time
 
 ClientMultiSocket = socket.socket()
 host = '127.0.0.1'
@@ -36,31 +37,22 @@ while True:
             txt = dec.decode(text_rec)
             amount_received += len(txt)
             print(txt, end='')
-        print('\n')
-# C:/Users/Дана Иманкулова/projects/python/mbks/близнецы.txt
+# C:/Users/Дана Иманкулова/projects/python/mbks/1.txt
     else:
         print(response, end='')
 
     message = input(str(login))
-    if message.split()[0] == 'write':   # write fun, message = (write filename text)
-        if len(message.split()) < 3:    # missing argument
+    if message.split()[0] == 'write':
+        if len(message.split()) < 3:
             ClientMultiSocket.send(str.encode(message))
             continue
-        else:   # if all arguments
-            text_sent = ' '.join(message.strip().split()[2:])
-            ClientMultiSocket.send(str.encode(message.split()[0] + ' ' +
-                                              message.split()[1] + ' ' +
-                                              str(len(text_sent))))
-            if ClientMultiSocket.recv(1024).decode('utf-8') == 'Ok':
-                while len(text_sent) > 0:
-                    ClientMultiSocket.send(str.encode(text_sent[:2048]))
-                    text_sent = text_sent[2048:]
-            else:
-                print(response, end='')
-        ClientMultiSocket.send(str.encode(input(str(login))))
-        continue    # return to the start of while
-
-    ClientMultiSocket.send(str.encode(message)) # if message != write, send message(input())
+        file_name = message.split()[1]
+        text = ' '.join(list(message.split()[2:]))
+        text_size = str(len(text))
+        string = 'write ' + file_name + ' ' + text_size + ' ' + text
+        ClientMultiSocket.send(str.encode(string))
+        continue
+    ClientMultiSocket.send(str.encode(message))
 
 ClientMultiSocket.close()
 
