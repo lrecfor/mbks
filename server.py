@@ -3,7 +3,6 @@ from _thread import *
 import os
 import shutil
 import hashlib
-import codecs
 import users as u
 
 count_users = 0
@@ -210,14 +209,14 @@ class Server:
     # admins functions
     def useradd(self):
         new_user = u.User()
-        self.connection.send("Login: ".encode())
+        self.connection.send("New login: ".encode())
         new_user.log = self.connection.recv(1024).decode()
         with open("passwords.txt", 'r') as f:
             logins = f.read()
             if new_user.log in logins.split():
                 self.connection.send("Error: user is already exist.\n".encode())
                 return False
-        self.connection.send("Password: ".encode())
+        self.connection.send("New password: ".encode())
         new_user.passwd = self.connection.recv(1024).decode()
         with open("passwords.txt", 'a') as f:
             hashed_passwd = hashlib.sha256(new_user.passwd.encode('utf-8')).hexdigest()

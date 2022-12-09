@@ -1,6 +1,5 @@
 import socket
 import codecs
-import time
 
 ClientMultiSocket = socket.socket()
 host = '127.0.0.1'
@@ -15,7 +14,7 @@ login = ''
 while True:
     response = ClientMultiSocket.recv(1024).decode('utf-8')
 
-    if 'logged in' in response:
+    if 'logged in succesfully' in response:
         print(response, end='')
         login = str(response.split()[0] + ': ')
 
@@ -37,11 +36,15 @@ while True:
             txt = dec.decode(text_rec)
             amount_received += len(txt)
             print(txt, end='')
+        print("\n")
 # C:/Users/Дана Иманкулова/projects/python/mbks/1.txt
     else:
         print(response, end='')
 
-    message = input(str(login))
+    if response == 'New login: ' or 'New password: ' in response:
+        message = input()
+    else:
+        message = input(str(login))
     if message.split()[0] == 'write':
         if len(message.split()) < 3:
             ClientMultiSocket.send(str.encode(message))
