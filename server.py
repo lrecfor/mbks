@@ -43,13 +43,14 @@ class Server:
         self.connection.send("Error: password is incorrect.\nPassword: ".encode())
         return False
 
-    def check_status(self):
-        with open('admins.txt', 'r') as f:
-            logins = f.read().split()
-        if self.user.log in logins:
-            self.user.status = u.Status.admin
-        else:
-            self.user.status = u.Status.ordinary
+    def check_groups(self, login):
+        with open('groups.txt', 'r') as f:
+            lines = f.readlines()
+        groups = []
+        for line in lines:
+            if login in line.split():
+                groups.append(line.split()[0][:-1])
+        return groups
 
     def auth(self):
         global count_users
@@ -83,8 +84,7 @@ class Server:
                 self.logout('unexpected')
                 return False
         print(self.user.log + ': ' + self.user.log + " logged in successfully.")
-        self.check_status()
-        print(self.user.log + ': ' + 'status -', self.user.status)
+        self.user.group = self.check_groups(self.user.log)
         self.create_directory()
         return True
 
@@ -124,6 +124,10 @@ class Server:
                 self.connection.send("Usage: logout\nLog the user out of a system.\n".encode())
             elif command_name == "pwd":
                 self.connection.send("Usage: pwd\nPrint the name of the current working directory.\n".encode())
+            elif command_name == "rr":
+                self.connection.send("Usage: rr [filename]\nPrint the permissions for the file.\n".encode())
+            elif command_name == "chmod":
+                self.connection.send("Usage: chmod [filename] [u|g] [subjectName] [rights]\nChange permissions for file.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
@@ -212,7 +216,7 @@ class Server:
             self.connection.send(str(text_send).encode('utf-8'))
             text = text[1024:]
 
-    def rr(self, command_string):
+    def rr(self, command_string):   # check rights for file rr filename
         print()
 
     def chmod(self, command_string):
@@ -298,7 +302,8 @@ class Server:
                     users_string += str(line.split()[1] + ' ')
                     users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
                                         + "/" + line.split()[0])
-                    users_string += str(' ordinary\n')
+                    groups = self.check_groups(line.split()[0])
+                    users_string += (' ' + ' '.join(groups) + '\n')
                     break
         else:
             for line in lines:
@@ -307,19 +312,52 @@ class Server:
                     users_string += str(line.split()[1] + ' ')
                     users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
                                         + "/" + line.split()[0])
-                    users_string += str(' ordinary\n')
+                    groups = self.check_groups(line.split()[0])
+                    users_string += (' ' + ' '.join(groups) + '\n')
         self.connection.send(users_string.encode())
 
-    def groupadd(self):
-        print()
+    def groupadd(self, group_name):    # create group
+        with open('groups.txt', 'r') as f:
+            lines = f.readlines()
+        with open('groups.txt', 'w') as f:
+            for line in lines:
+                f.writelines(line)
+            f.writelines('\n' + str(group_name) + ':')
+        self.connection.send(str.encode("Group list was updated.\n"))
 
-    def usermod(self):  # добавить пользователя в группу(-g)
-        # удалить пользователя из группы(-r)
-        print()
+    def usermod(self, command_string):  # usermod -g/-r group_name user_name
+        command_string = command_string.split()
+        arg = command_string[1][1]
+        group_name = command_string[2]
+        user_name = command_string[3]
+        with open('groups.txt', 'r') as f:
+            lines = f.readlines()
+        if arg == 'g':  # добавить пользователя в группу(-g)
+            with open('groups.txt', 'w') as f:
+                for line in lines:
+                    if line.split()[0][:-1] == group_name:
+                        line += ' ' + str(user_name)
+                    f.writelines(line.replace("  ", " "))
+        else:    # удалить пользователя из группы(-r)
+            with open('groups.txt', 'w') as f:
+                for line in lines:
+                    if line.split()[0][:-1] == group_name:
+                        line = (line.split(str(user_name))[0] + line.split(str(user_name))[1]).replace("  ", " ")
+                    f.writelines(line)
+        self.connection.send(str.encode("Group list was updated.\n"))
 
-    def groupdel(self):
-        print()
-
+    def groupdel(self, group_name): #delete group
+        with open('groups.txt', 'r') as f:
+            lines = f.readlines()
+        if "".join(lines[-1:]) == str(group_name + ":"):
+            string = str.strip("".join(lines[-2:][0]))
+            lines = lines[:-2]
+            lines.append(string)
+        with open('groups.txt', 'w') as f:
+            for line in lines:
+                if line.split()[0][:-1] != group_name:
+                    f.writelines(line)
+        self.connection.send(str.encode("Group list was updated.\n"))
 
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
@@ -359,7 +397,19 @@ def multi_threaded_client(connection, user):
                     sr.logout()
                 elif command == 'pwd':
                     sr.pwd()
-                elif sr.user.status == u.Status.admin:
+                elif command == 'rr':
+                    if len(list(data.decode('utf-8').split())) != 2:
+                        connection.send(str.encode("Error: missing file name.\n"))
+                        continue
+                    else:
+                        sr.rr(data.decode('utf-8').split()[1])
+                elif command == 'chmod':
+                    if len(list(data.decode('utf-8').split())) != 5:
+                        connection.send(str.encode("Error: missing file name.\n"))
+                        continue
+                    else:
+                        sr.chmod(data.decode('utf-8'))
+                elif 'adm' in sr.user.group:
                     if command == 'useradd':
                         if len(data.split()) > 1:
                             connection.send("Error: too many arguments\n".encode())
@@ -379,6 +429,24 @@ def multi_threaded_client(connection, user):
                         sr.passwd(data.decode('utf-8').split()[1])
                     elif command == 'userinfo':
                         sr.userinfo(data.decode('utf-8'))
+                    elif command == 'groupadd':
+                        if len(data.decode('utf-8').split()) != 2:
+                            connection.send("Error: missing argument\n".encode())
+                            continue
+                        sr.groupadd(data.decode('utf-8').split()[1])
+                    elif command == 'usermod':
+                        if len(data.decode('utf-8').split()) != 4:
+                            connection.send("Error: missing argument\n".encode())
+                            continue
+                        if data.decode('utf-8').split()[1][1] not in ['g', 'r']:
+                            connection.send("Error: wrong argument\n".encode())
+                            continue
+                        sr.usermod(data.decode('utf-8'))
+                    elif command == 'groupdel':
+                        if len(data.decode('utf-8').split()) != 2:
+                            connection.send("Error: missing argument\n".encode())
+                            continue
+                        sr.groupdel(data.decode('utf-8').split()[1])
                     else:
                         connection.send(str.encode("Error: command wasn't found.\n"))
                         continue
