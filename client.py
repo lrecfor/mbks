@@ -14,7 +14,7 @@ login = ''
 while True:
     response = ClientMultiSocket.recv(1024).decode('utf-8')
 
-    if 'logged in succesfully' in response:
+    if 'logged in successfully' in response:
         print(response, end='')
         login = str(response.split()[0] + ': ')
 
@@ -41,7 +41,7 @@ while True:
     else:
         print(response, end='')
 
-    if response == 'New login: ' or 'New password: ' in response:
+    if response == 'New login: ' or 'password: ' in response:
         message = input()
     else:
         message = input(str(login))

@@ -14,6 +14,7 @@ class Server:
     def __init__(self, connect):
         self.connection = connect
         self.user = u.User()
+        self.access_matrix = dict()
 
     def check_login(self):
         with open("passwords.txt", 'r') as f:
@@ -99,8 +100,11 @@ class Server:
     def del_directory(self):
         try:
             shutil.rmtree(self.user.path, ignore_errors=True)
-        except OSError:
+        except TypeError:
             pass
+
+    def set_rights(self, subject_name, object_name, rights):
+        self.access_matrix[(subject_name, object_name)] = rights
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -142,7 +146,6 @@ class Server:
                     file.remove(self.user.log + '\n')
                 for line in file:
                     f.write(line)
-        self.del_directory()
         if unexpected is not None:
             print('Error: lost connection with', self.user.log + '.')
         else:
@@ -182,6 +185,9 @@ class Server:
             file_name = command_string.split()[1]
             if file_name[1] != ':':
                 file_name = str(self.user.dir + '/' + command_string.split()[1])
+            if not os.path.isfile(file_name):
+                self.set_rights(self.user.log, file_name, 777)
+                self.set_rights(self.user.group, file_name, 777)
             with open(file_name, "w") as f:
                 f.write(text)
         return True
@@ -205,6 +211,12 @@ class Server:
             text_send = text[:1024]
             self.connection.send(str(text_send).encode('utf-8'))
             text = text[1024:]
+
+    def rr(self, command_string):
+        print()
+
+    def chmod(self, command_string):
+        print()
 
     # admins functions
     def useradd(self):
@@ -247,12 +259,12 @@ class Server:
                                   + "/" + user_log), ignore_errors=True)
             except OSError:
                 pass
-        with open("passwords.txt", 'r+') as f:
-            lines = f.readlines()
-            lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
-        with open("passwords.txt", 'w') as f:
-            f.writelines(lines)
-        self.connection.send(str(user_log + " was deleted successfully.\n").encode())
+            with open("passwords.txt", 'r+') as f:
+                lines = f.readlines()
+                lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
+            with open("passwords.txt", 'w') as f:
+                f.writelines(lines)
+            self.connection.send(str(user_log + " was deleted successfully.\n").encode())
 
     def passwd(self, user_log):
         self.connection.send("Enter new password: ".encode())
@@ -290,12 +302,23 @@ class Server:
                     break
         else:
             for line in lines:
-                users_string += str(line.split()[0] + ' ')
-                users_string += str(line.split()[1] + ' ')
-                users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
-                                    + "/" + line.split()[0])
-                users_string += str(' ordinary\n')
+                if line != '\n':
+                    users_string += str(line.split()[0] + ' ')
+                    users_string += str(line.split()[1] + ' ')
+                    users_string += str(' ' + "C:/Users/Дана Иманкулова/projects/python/mbks/D"
+                                        + "/" + line.split()[0])
+                    users_string += str(' ordinary\n')
         self.connection.send(users_string.encode())
+
+    def groupadd(self):
+        print()
+
+    def usermod(self):  # добавить пользователя в группу(-g)
+        # удалить пользователя из группы(-r)
+        print()
+
+    def groupdel(self):
+        print()
 
 
 def multi_threaded_client(connection, user):
@@ -352,6 +375,7 @@ def multi_threaded_client(connection, user):
                     elif command == 'passwd':
                         if len(data.split()) != 2:
                             connection.send("Error: missing argument\n".encode())
+                            continue
                         sr.passwd(data.decode('utf-8').split()[1])
                     elif command == 'userinfo':
                         sr.userinfo(data.decode('utf-8'))
@@ -381,8 +405,6 @@ if __name__ == "__main__":
 
     with open('sessions.txt', 'wb'):
         pass
-    shutil.rmtree(os.getcwd() + "/D", ignore_errors=True)
-    os.mkdir(os.getcwd() + "/D")
 
     while True:
         Client, address = ServerSideSocket.accept()

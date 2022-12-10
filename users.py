@@ -14,3 +14,4 @@ class User:
         self.path = None
         self.dir = None  # /home
         self.status = Status.ordinary
+        self.group = None
