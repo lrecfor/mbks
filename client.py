@@ -27,16 +27,16 @@ while True:
         ClientMultiSocket.close()
         break
 
-    elif response.isdigit():   # read fun, getting text by blocks(1024)
+    elif response.isdigit():
         dec = codecs.getincrementaldecoder('utf8')()
-        amount_received = 0
         amount_expected = int(response)
-        while amount_received < amount_expected:
-            text_rec = ClientMultiSocket.recv(1024)
-            txt = dec.decode(text_rec)
-            amount_received += len(txt)
-            print(txt, end='')
-        print("\n")
+        text_rec = ClientMultiSocket.recv(amount_expected)
+        txt = dec.decode(text_rec)
+        amount_received = len(txt)
+        if amount_received != amount_expected:
+            print("Error: data was corrupted")
+        else:
+            print(txt)
 # C:/Users/Дана Иманкулова/projects/python/mbks/1.txt
     else:
         print(response, end='')

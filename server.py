@@ -103,8 +103,11 @@ class Server:
         except TypeError:
             pass
 
-    def set_rights(self, subject_name, object_name, rights):
-        self.access_matrix[(subject_name, object_name)] = rights
+    def set_rights(self, subject_name, object_name, rights, subject_type):
+        if (subject_name, object_name, subject_type) not in self.access_matrix:
+            self.access_matrix[(subject_name, object_name, subject_type)] = rights
+        else:
+            self.access_matrix[(subject_name, object_name, subject_type)].append(rights)
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -190,8 +193,8 @@ class Server:
             if file_name[1] != ':':
                 file_name = str(self.user.dir + '/' + command_string.split()[1])
             if not os.path.isfile(file_name):
-                self.set_rights(self.user.log, file_name, 777)
-                self.set_rights(self.user.group, file_name, 777)
+                self.set_rights(self.user.log, file_name, 777, "u")
+                self.set_rights(self.user.log, file_name, 777, "g")  # user group
             with open(file_name, "w") as f:
                 f.write(text)
         return True
@@ -211,10 +214,7 @@ class Server:
             self.connection.send(str.encode('Error: incorrect file name.\n'))
             return False
         self.connection.send(str.encode(str(len(text))))
-        while len(text) > 0:
-            text_send = text[:1024]
-            self.connection.send(str(text_send).encode('utf-8'))
-            text = text[1024:]
+        self.connection.send(str(text).encode('utf-8'))
 
     def rr(self, command_string):   # check rights for file rr filename
         print()
@@ -242,6 +242,8 @@ class Server:
         new_user.path = os.getcwd() + "/D/" + new_user.log
         new_user.dir = os.getcwd() + "/D/" + new_user.log + "/home"
         os.makedirs(path)
+        self.groupadd(new_user.log, flag=1)
+        self.usermod("usermod -g " + str(new_user.log) + " " + str(new_user.log), flag=1)
         self.connection.send(str(new_user.log + " was created successfully.\n").encode())
 
     def userdel(self, user_log):
@@ -258,7 +260,7 @@ class Server:
         if user_log in logins:
             self.connection.send("Error: cannot delete user while he is logged in\n".encode())
         else:
-            try:    #delete directory
+            try:    # delete directory
                 shutil.rmtree(str("C:/Users/Дана Иманкулова/projects/python/mbks/D"
                                   + "/" + user_log), ignore_errors=True)
             except OSError:
@@ -266,8 +268,18 @@ class Server:
             with open("passwords.txt", 'r+') as f:
                 lines = f.readlines()
                 lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
+            line = "".join(lines[-1:]).replace("\n", "")
+            lines = lines[:-1]
+            lines.append(line)
             with open("passwords.txt", 'w') as f:
                 f.writelines(lines)
+
+            self.groupdel(user_log, flag=1)
+            with open('groups.txt', 'r') as f:
+                lines = f.readlines()
+                for line in lines:
+                    if user_log in line:
+                        self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)
             self.connection.send(str(user_log + " was deleted successfully.\n").encode())
 
     def passwd(self, user_log):
@@ -316,40 +328,45 @@ class Server:
                     users_string += (' ' + ' '.join(groups) + '\n')
         self.connection.send(users_string.encode())
 
-    def groupadd(self, group_name):    # create group
+    def groupadd(self, group_name, flag=None):    # create group
         with open('groups.txt', 'r') as f:
             lines = f.readlines()
         with open('groups.txt', 'w') as f:
             for line in lines:
                 f.writelines(line)
             f.writelines('\n' + str(group_name) + ':')
-        self.connection.send(str.encode("Group list was updated.\n"))
+        if flag is None:
+            self.connection.send(str.encode("Group list was updated.\n"))
 
-    def usermod(self, command_string):  # usermod -g/-r group_name user_name
+    def usermod(self, command_string, flag=None):  # usermod -g/-r group_name user_name
         command_string = command_string.split()
         arg = command_string[1][1]
         group_name = command_string[2]
         user_name = command_string[3]
         with open('groups.txt', 'r') as f:
             lines = f.readlines()
-        if arg == 'g':  # добавить пользователя в группу(-g)
-            with open('groups.txt', 'w') as f:
-                for line in lines:
-                    if line.split()[0][:-1] == group_name:
-                        line += ' ' + str(user_name)
-                    f.writelines(line.replace("  ", " "))
-        else:    # удалить пользователя из группы(-r)
-            with open('groups.txt', 'w') as f:
-                for line in lines:
-                    if line.split()[0][:-1] == group_name:
-                        line = (line.split(str(user_name))[0] + line.split(str(user_name))[1]).replace("  ", " ")
-                    f.writelines(line)
-        self.connection.send(str.encode("Group list was updated.\n"))
+        if group_name in "".join(lines).replace(":", ""):
+            if arg == 'g':  # добавить пользователя в группу(-g)
+                with open('groups.txt', 'w') as f:
+                    for line in lines:
+                        if line.split()[0][:-1] == group_name:
+                            line += ' ' + str(user_name)
+                        f.writelines(line.replace("  ", " "))
+            else:    # удалить пользователя из группы(-r)
+                with open('groups.txt', 'w') as f:
+                    for line in lines:
+                        if line.split()[0][:-1] == group_name:
+                            line = (line.split(str(user_name))[0] + line.split(str(user_name))[1]).replace("  ", " ")
+                        f.writelines(line)
+            if flag is None:
+                self.connection.send(str.encode("Group list was updated.\n"))
+        else:
+            self.connection.send(str.encode("Group with this name doesn't exist.\n"))
 
-    def groupdel(self, group_name): #delete group
+    def groupdel(self, group_name, flag=None):
         with open('groups.txt', 'r') as f:
             lines = f.readlines()
-        if "".join(lines[-1:]) == str(group_name + ":"):
+        if "".join(lines[-1:]).split()[0] == str(group_name + ":"):
             string = str.strip("".join(lines[-2:][0]))
             lines = lines[:-2]
             lines.append(string)
@@ -357,7 +374,9 @@ class Server:
             for line in lines:
                 if line.split()[0][:-1] != group_name:
                     f.writelines(line)
-        self.connection.send(str.encode("Group list was updated.\n"))
+        if flag is None:
+            self.connection.send(str.encode("Group list was updated.\n"))
+
 
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
