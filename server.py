@@ -104,10 +104,29 @@ class Server:
             pass
 
     def set_rights(self, subject_name, object_name, rights, subject_type):
-        if (subject_name, object_name, subject_type) not in self.access_matrix:
+        if (subject_name, object_name, subject_type) not in self.access_matrix.keys():
             self.access_matrix[(subject_name, object_name, subject_type)] = rights
-        else:
-            self.access_matrix[(subject_name, object_name, subject_type)].append(rights)
+        self.save_rights()
+
+    def check_rights(self, object_name):
+        return str(self.access_matrix.get((self.user.log, object_name, "u"))),\
+               str(self.access_matrix.get((self.user.log, object_name, "g")))
+
+    def update_rights(self):
+        self.access_matrix = dict()
+        with open('access_matrix.txt', 'r') as f:
+            for line in f.readlines():
+                line = line.split("|")
+                self.access_matrix[(line[0], line[1], line[2])] = int(line[3].replace('\n', ''))
+
+    def save_rights(self):
+        with open('access_matrix.txt', 'w') as f:
+            acc_matr = list(self.access_matrix.items())
+            acc_matr = ["|".join(list(["|".join(list(acc_matr[i][0])),
+                                                 str(acc_matr[i][1])])) for i in
+                             range(len(acc_matr))]
+            acc_matr = "\n".join(acc_matr)
+            f.write(acc_matr)
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -216,8 +235,11 @@ class Server:
         self.connection.send(str.encode(str(len(text))))
         self.connection.send(str(text).encode('utf-8'))
 
-    def rr(self, command_string):   # check rights for file rr filename
-        print()
+    def rr(self, file_name):   # check rights for file rr filename
+        if file_name[1] != ':':
+            file_name = str(self.user.dir + '/' + file_name)
+        rights = " ".join(list(self.check_rights(file_name)))
+        self.connection.send(str.encode(rights + " " + self.user.log + " " + self.user.log + "\n"))
 
     def chmod(self, command_string):
         print()
@@ -381,6 +403,7 @@ class Server:
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
     sr = Server(connection)
+    sr.update_rights()
     if sr.auth():
         while True:
             try:
@@ -495,7 +518,6 @@ if __name__ == "__main__":
 
     while True:
         Client, address = ServerSideSocket.accept()
-        # Client.settimeout(1)
         print('Connected to: ' + address[0] + ':' + str(address[1]))
         start_new_thread(multi_threaded_client, (Client, address))
         ThreadCount += 1

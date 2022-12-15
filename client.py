@@ -37,7 +37,7 @@ while True:
             print("Error: data was corrupted")
         else:
             print(txt)
-# C:/Users/Дана Иманкулова/projects/python/mbks/1.txt
+
     else:
         print(response, end='')
 
