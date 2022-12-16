@@ -107,13 +107,15 @@ class Server:
         self.access_matrix[(subject_name, object_name, subject_type)] = rights
         self.save_rights()
 
-    def check_rights(self, object_name):    # C:\Users\Дана Иманкулова\projects\python\mbks/D/kiko/home/1.txt
+    def check_rights(self, object_name):
         rights_list = list()
         for group in self.check_groups(self.user.log):
             rights = str(self.access_matrix.get((group, object_name, "g")))
+            if group == self.user.log and "None" in rights:
+                return str("".join(list(rights)) + " " + self.user.log + " " + str(group) + "\n")
             if "None" not in rights:
                 rights_list.append("".join(list(rights))
-                                            + " " + self.user.log + " " + str(group) + "\n")
+                                   + " " + self.user.log + " " + str(group) + "\n")
         return rights_list
 
     def update_rights(self):
