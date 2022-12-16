@@ -228,14 +228,22 @@ class Server:
                 file_name = self.user.dir + '\\' + file_name
         try:
             with open(file_name, 'r', encoding='utf-8') as f:
-                text = f.read()
+                try:
+                    text = f.read()
+                except UnicodeDecodeError:
+                    self.connection.send(str.encode('UnicodeDecodeError: utf-8 codec can\'t decode.\n'))
+                    return False
         except IOError:
             self.connection.send(str.encode('Error: incorrect file name.\n'))
             return False
         self.connection.send(str.encode(str(len(text))))
         self.connection.send(str(text).encode('utf-8'))
 
-    def rr(self, file_name):   # check rights for file rr filename
+    def rr(self, command_string):   # check rights for file rr filename
+        command_string = command_string.split()
+        file_name = command_string[1]
+        if len(command_string) > 2 and command_string[1][1] == ":" and command_string[2][-3:] == "txt":
+            file_name = command_string[1] + " " + command_string[2]
         if file_name[1] != ':':
             file_name = str(self.user.dir + '/' + file_name)
         rights = " ".join(list(self.check_rights(file_name)))
@@ -440,11 +448,11 @@ def multi_threaded_client(connection, user):
                 elif command == 'pwd':
                     sr.pwd()
                 elif command == 'rr':
-                    if len(list(data.decode('utf-8').split())) != 2:
+                    if len(list(data.decode('utf-8').split())) == 1:
                         connection.send(str.encode("Error: missing file name.\n"))
                         continue
                     else:
-                        sr.rr(data.decode('utf-8').split()[1])
+                        sr.rr(data.decode('utf-8'))
                 elif command == 'chmod':
                     if len(list(data.decode('utf-8').split())) != 5:
                         connection.send(str.encode("Error: missing file name.\n"))
