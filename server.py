@@ -104,13 +104,17 @@ class Server:
             pass
 
     def set_rights(self, subject_name, object_name, rights, subject_type):
-        if (subject_name, object_name, subject_type) not in self.access_matrix.keys():
-            self.access_matrix[(subject_name, object_name, subject_type)] = rights
+        self.access_matrix[(subject_name, object_name, subject_type)] = rights
         self.save_rights()
 
-    def check_rights(self, object_name):
-        return str(self.access_matrix.get((self.user.log, object_name, "u"))),\
-               str(self.access_matrix.get((self.user.log, object_name, "g")))
+    def check_rights(self, object_name):    # C:\Users\Дана Иманкулова\projects\python\mbks/D/kiko/home/1.txt
+        rights_list = list()
+        for group in self.check_groups(self.user.log):
+            rights = str(self.access_matrix.get((group, object_name, "g")))
+            if "None" not in rights:
+                rights_list.append("".join(list(rights))
+                                            + " " + self.user.log + " " + str(group) + "\n")
+        return rights_list
 
     def update_rights(self):
         self.access_matrix = dict()
@@ -242,15 +246,29 @@ class Server:
     def rr(self, command_string):   # check rights for file rr filename
         command_string = command_string.split()
         file_name = command_string[1]
-        if len(command_string) > 2 and command_string[1][1] == ":" and command_string[2][-3:] == "txt":
+        if len(command_string) > 2 and command_string[1][1] == ":" and "." in command_string[2]:
             file_name = command_string[1] + " " + command_string[2]
         if file_name[1] != ':':
             file_name = str(self.user.dir + '/' + file_name)
-        rights = " ".join(list(self.check_rights(file_name)))
-        self.connection.send(str.encode(rights + " " + self.user.log + " " + self.user.log + "\n"))
+        rights = "".join(list(self.check_rights(file_name)))
+        self.connection.send(str.encode(rights))
 
-    def chmod(self, command_string):
-        print()
+    def chmod(self, command_string):    # chmod filename u|g subjectName rights
+        command_string = command_string.split()
+        if len(command_string) > 2 and command_string[1][1] == ":" and "." in command_string[2]:
+            file_name = command_string[1] + " " + command_string[2]
+            arg = command_string[3]
+            subject_name = command_string[4]
+            rights = command_string[5]
+        else:
+            file_name = command_string[1]
+            if file_name[1] != ':':
+                file_name = str(self.user.dir + '\\' + file_name)
+            arg = command_string[2]
+            subject_name = command_string[3]
+            rights = command_string[4]
+        self.set_rights(subject_name, file_name, rights, arg)
+        self.connection.send(str.encode("Permissions were updated.\n"))
 
     # admins functions
     def useradd(self):
@@ -454,7 +472,7 @@ def multi_threaded_client(connection, user):
                     else:
                         sr.rr(data.decode('utf-8'))
                 elif command == 'chmod':
-                    if len(list(data.decode('utf-8').split())) != 5:
+                    if len(list(data.decode('utf-8').split())) < 5:
                         connection.send(str.encode("Error: missing file name.\n"))
                         continue
                     else:
