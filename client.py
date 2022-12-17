@@ -41,7 +41,7 @@ while True:
     else:
         print(response, end='')
 
-    if response == 'New login: ' or 'password: ' in response:
+    if response == 'New login: ' or ('*password: ' not in response and 'password: ' in response):
         message = input()
     else:
         message = input(str(login))
