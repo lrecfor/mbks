@@ -105,23 +105,20 @@ class Server:
         except TypeError:
             pass
 
-    def set_rights(self, subject_name, object_name, rights, subject_type):
+    def set_rights(self, subject_name, object_name, rights):
         object_name = object_name.replace("/", "\\")
-        self.access_matrix[(subject_name, object_name, subject_type)] = rights
+        self.access_matrix[(subject_name, object_name)] = str(rights)
         self.save_rights()
 
     def get_rights(self, object_name):
+        self.update_rights()
         object_name = object_name.replace("/", "\\")
-        if self.user.log == "root":
+        self.check_groups(self.user.log)
+        if "adm" in self.user.group:
             return str(str(6) + " " + self.user.log + " " + self.user.log + "\n")
         rights_list = list()
-        rights = str(self.access_matrix.get((self.user.log, object_name, "u")))
-        rights_list.append("".join(list(rights))
-                           + " " + self.user.log + " " + self.user.log + "\n")
-        if rights == "None":
-            return rights_list
         for group in self.check_groups(self.user.log):
-            rights = str(self.access_matrix.get((group, object_name, "g")))
+            rights = str(self.access_matrix.get((group, object_name)))
             if group == self.user.log and "None" in rights:
                 return str("".join(list(rights)) + " " + self.user.log + " " + str(group) + "\n")
             if "None" not in rights:
@@ -130,18 +127,18 @@ class Server:
         return rights_list
 
     def check_rights(self, subject_name, object_name, right_type):
-        self.check_groups(self, self.user.log)
+        self.check_groups(self.user.log)
         if "adm" in self.user.group:
             return True
         object_name = object_name.replace("/", "\\")
-        rights = str(self.access_matrix.get((subject_name, object_name, "u")))
-        rights_g = str(self.access_matrix.get((subject_name, object_name, "g")))
-        if rights == "None" or rights_g == "None":
+        rights = str(self.access_matrix.get((subject_name, object_name)))
+        if rights == "None":
             return False
-        for group in self.check_groups(subject_name):
-            rights = str(self.access_matrix.get((group, object_name, "g")))
-            if "None" not in rights and rights == right_type:
-                return True
+        if rights[0] >= right_type:
+            for group in self.check_groups(subject_name):
+                rights = str(self.access_matrix.get((group, object_name)))
+                if "None" not in rights and rights[1] == right_type:
+                    return True
         return False
 
     def update_rights(self):
@@ -149,7 +146,7 @@ class Server:
         with open('access_matrix.txt', 'r') as f:
             for line in f.readlines():
                 line = line.split("|")
-                self.access_matrix[(line[0], line[1], line[2])] = int(line[3].replace('\n', ''))
+                self.access_matrix[(line[0], line[1])] = str(line[2].replace('\n', ''))
 
     def delete_rights(self, subject_name):
         with open('access_matrix.txt', 'r') as f:
@@ -166,7 +163,7 @@ class Server:
             acc_matr = list(self.access_matrix.items())
             acc_matr = ["|".join(list(["|".join(list(acc_matr[i][0])),
                                                  str(acc_matr[i][1])])) for i in
-                             range(len(acc_matr))]
+                        range(len(acc_matr))]
             acc_matr = "\n".join(acc_matr)
             f.write(acc_matr)
 
@@ -333,7 +330,15 @@ class Server:
         arg = command_string[2]
         subject_name = command_string[3]
         rights = command_string[4]
-        self.set_rights(subject_name, file_name, rights, arg)
+
+        if arg == "u":
+            r = self.access_matrix.get((subject_name, file_name))
+            r = str(rights) + str(r[1])
+            self.set_rights(subject_name, file_name, r)
+        else:
+            r = self.access_matrix.get((subject_name, file_name))
+            r = str(r[0]) + str(rights)
+            self.set_rights(subject_name, file_name, r)
         self.connection.send(str.encode("Permissions were updated.\n"))
 
     # admins functions
