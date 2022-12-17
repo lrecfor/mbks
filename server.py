@@ -94,9 +94,8 @@ class Server:
         self.user.dir = os.getcwd() + "\\D\\" + self.user.log + "\\home"
         try:
             os.makedirs(path)
-            if self.user.log != "root":
-                self.set_rights(self, self.user.log, path, 6, "u")
-                self.set_rights(self, self.user.log, path, 6, "g")
+            '''self.set_rights(self, self.user.log, path, 6, "u")
+            self.set_rights(self, self.user.log, path, 6, "g")'''
         except OSError:
             pass
 
@@ -131,7 +130,8 @@ class Server:
         return rights_list
 
     def check_rights(self, subject_name, object_name, right_type):
-        if subject_name == "root":
+        self.check_groups(self, self.user.log)
+        if "adm" in self.user.group:
             return True
         object_name = object_name.replace("/", "\\")
         rights = str(self.access_matrix.get((subject_name, object_name, "u")))
@@ -150,6 +150,16 @@ class Server:
             for line in f.readlines():
                 line = line.split("|")
                 self.access_matrix[(line[0], line[1], line[2])] = int(line[3].replace('\n', ''))
+
+    def delete_rights(self, subject_name):
+        with open('access_matrix.txt', 'r') as f:
+            lines = f.readlines()
+        with open('access_matrix.txt', 'w') as f:
+            if "".join(lines[-1:]).split("|")[0] == subject_name:
+                lines[-2:] = lines[-2:][0].replace("\n", "")
+            for line in lines:
+                if line.split("|")[0] != subject_name:
+                    f.writelines(line)
 
     def save_rights(self):
         with open('access_matrix.txt', 'w') as f:
@@ -187,7 +197,7 @@ class Server:
                 self.connection.send(string.encode())
 
     def pwd(self):
-        self.connection.send(str.encode(self.user.dir.replace('/', '\\') + '\n'))
+        self.connection.send(str.encode("D:\\" + self.user.log + "\\home\\" + '\n'))
 
     def logout(self, unexpected=None):
         global count_users, clr_sessions
@@ -224,9 +234,9 @@ class Server:
             command_string = command_string[2:]
             dir_name = ' '.join(command_string.split())
             print(dir_name)
-        if not self.check_rights(self.user.log, dir_name, 2):
+        '''if not self.check_rights(self.user.log, dir_name, 2):
             self.connection.send(str.encode('Error: access denied.\n'))
-            return False
+            return False'''
         files = os.listdir(dir_name)
         files_list = ''
         for file in files:
@@ -247,12 +257,19 @@ class Server:
             file_name = command_string.split()[1]
             if file_name[1] != ':':
                 file_name = str(self.user.dir + '\\' + command_string.split()[1])
-            if not self.check_rights(self.user.log, file_name, 2):
+            else:
+                if "/" in file_name:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(file_name.split("/")[1:])
+                else:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("\\")[1:])
+            '''if not self.check_rights(self.user.log, file_name, 2):
                 self.connection.send(str.encode('Error: access denied.\n'))
                 return False
             if not os.path.isfile(file_name) and self.user.log != "root":
                 self.set_rights(self.user.log, file_name, 6, "u")
-                self.set_rights(self.user.log, file_name, 6, "g")  # user group
+                self.set_rights(self.user.log, file_name, 6, "g")  # user group'''
             with open(file_name, "w") as f:
                 f.write(text)
             self.connection.send(str.encode('File was written successfully.\n'))
@@ -260,16 +277,19 @@ class Server:
 
     # check_rights
     def read(self, command_string):
-        if len(list(command_string.split())) > 2:
-            command_string = command_string[5:]
-            file_name = ' '.join(command_string.split())
+        file_name = command_string.split()[1]
+        if file_name[1] != ':':
+            file_name = self.user.dir + '\\' + file_name
         else:
-            file_name = command_string.split()[1]
-            if file_name[1] != ':':
-                file_name = self.user.dir + '\\' + file_name
-        if not self.check_rights(self.user.log, file_name, 4):
+            if "/" in file_name:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("/")[1:])
+            else:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                        + "\\".join(file_name.split("\\")[1:])
+        '''if not self.check_rights(self.user.log, file_name, 4):
             self.connection.send(str.encode('Error: access denied.\n'))
-            return False
+            return False'''
         try:
             with open(file_name, 'r', encoding='utf-8') as f:
                 try:
@@ -286,27 +306,33 @@ class Server:
     def rr(self, command_string):   # check rights for file rr filename
         command_string = command_string.split()
         file_name = command_string[1]
-        if len(command_string) > 2 and command_string[1][1] == ":" and "." in command_string[2]:
-            file_name = command_string[1] + " " + command_string[2]
         if file_name[1] != ':':
-            file_name = str(self.user.dir + '\\' + file_name)
+            file_name = self.user.dir + '\\' + file_name
+        else:
+            if "/" in file_name:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("/")[1:])
+            else:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("\\")[1:])
         rights = "".join(list(self.get_rights(file_name)))
         self.connection.send(str.encode(rights))
 
     def chmod(self, command_string):    # chmod filename u|g subjectName rights
         command_string = command_string.split()
-        if len(command_string) > 2 and command_string[1][1] == ":" and "." in command_string[2]:
-            file_name = command_string[1] + " " + command_string[2]
-            arg = command_string[3]
-            subject_name = command_string[4]
-            rights = command_string[5]
+        file_name = command_string[1]
+        if file_name[1] != ':':
+            file_name = self.user.dir + '\\' + file_name
         else:
-            file_name = command_string[1]
-            if file_name[1] != ':':
-                file_name = str(self.user.dir + '\\' + file_name)
-            arg = command_string[2]
-            subject_name = command_string[3]
-            rights = command_string[4]
+            if "/" in file_name:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("/")[1:])
+            else:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("\\")[1:])
+        arg = command_string[2]
+        subject_name = command_string[3]
+        rights = command_string[4]
         self.set_rights(subject_name, file_name, rights, arg)
         self.connection.send(str.encode("Permissions were updated.\n"))
 
@@ -361,8 +387,8 @@ class Server:
             lines.append(line)
             with open("passwords.txt", 'w') as f:
                 f.writelines(lines)
-
             self.groupdel(user_log, flag=1)
+            self.delete_rights(user_log)
             with open('groups.txt', 'r') as f:
                 lines = f.readlines()
                 for line in lines:
