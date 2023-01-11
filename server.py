@@ -473,21 +473,12 @@ class Server:
                                 line += "\n"
                             else:
                                 line += ' ' + str(user_name)
-                        elif line.split()[0][:-1] == user_name:
-                            if line[-1:] == "\n":
-                                line += ' ' + str(group_name)
-                                line = line.replace("\n", "")
-                                line += "\n"
-                            else:
-                                line += ' ' + str(group_name)
                         f.writelines(line.replace("  ", " "))
             else:    # удалить пользователя из группы(-r)
                 with open('groups.txt', 'w') as f:
                     for line in lines:
                         if line.split()[0][:-1] == group_name:
                             line = line.split(":")[0] + ":" + str(line.replace(str(user_name), "").split(":")[1])
-                        elif line.split()[0][:-1] == user_name:
-                            line = line.split(":")[0] + ":" + str(line.replace(str(group_name), "").split(":")[1])
                         f.writelines(line.replace("  ", " "))
             if flag is None:
                 self.connection.send(str.encode("Group list was updated.\n"))
