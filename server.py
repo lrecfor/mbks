@@ -4,6 +4,7 @@ import os
 import shutil
 import hashlib
 import users as u
+import files as f
 
 count_users = 0
 clr_sessions = False
@@ -14,7 +15,7 @@ class Server:
     def __init__(self, connect):
         self.connection = connect
         self.user = u.User()
-        self.access_matrix = dict()
+        self.access_list = f.Files()
 
     def check_login(self):
         with open("passwords.txt", 'r') as f:
@@ -44,8 +45,8 @@ class Server:
         return False
 
     def check_groups(self, login):
-        with open('groups.txt', 'r') as f:
-            lines = f.readlines()
+        with open('groups.txt', 'r') as _:
+            lines = _.readlines()
         groups = []
         for line in lines:
             if login in line.split():
@@ -105,67 +106,46 @@ class Server:
         except TypeError:
             pass
 
-    def set_rights(self, subject_name, object_name, rights):
-        object_name = object_name.replace("/", "\\")
-        self.access_matrix[(subject_name, object_name)] = str(rights)
-        self.save_rights()
+    def change_rights(self, subject_name, object_name, rights):
+        self.load_rights()
 
     def get_rights(self, object_name):
-        self.update_rights()
-        object_name = object_name.replace("/", "\\")
-        self.check_groups(self.user.log)
-        if "adm" in self.user.group:
-            return str(str(6) + " " + self.user.log + " " + self.user.log + "\n")
-        rights_list = list()
-        for group in self.check_groups(self.user.log):
-            rights = str(self.access_matrix.get((group, object_name)))
-            if group == self.user.log and "None" in rights:
-                return str("".join(list(rights)) + " " + self.user.log + " " + str(group) + "\n")
-            if "None" not in rights:
-                rights_list.append("".join(list(rights))
-                                   + " " + self.user.log + " " + str(group) + "\n")
-        return rights_list
+        for file in self.access_list.files:
+            if file.name == object_name:
+                string = list(vars(file).values())
+                name = "".join(list(string[0].split("\\"))[-1:])
+                string = string[2] + string[3] + string[4] + \
+                         "\t" + string[1] + "\t" + name
+                return str(string + "\n")
 
     def check_rights(self, subject_name, object_name, right_type):
-        self.check_groups(self.user.log)
-        if "adm" in self.user.group:
-            return True
-        object_name = object_name.replace("/", "\\")
-        rights = str(self.access_matrix.get((subject_name, object_name)))
-        if rights == "None":
-            return False
-        if rights[0] >= right_type:
-            for group in self.check_groups(subject_name):
-                rights = str(self.access_matrix.get((group, object_name)))
-                if "None" not in rights and rights[1] == right_type:
-                    return True
-        return False
+        for file in self.access_list.files:
+            if file.name == object_name:
+                if file.owner == subject_name:
+                    return int(file.owner_p) >= right_type
+                elif file.owner in self.check_groups(subject_name):
+                    return int(file.group_p) >= right_type
+                else:
+                    return int(file.others_p) >= right_type
 
-    def update_rights(self):
-        self.access_matrix = dict()
-        with open('access_matrix.txt', 'r') as f:
-            for line in f.readlines():
-                line = line.split("|")
-                self.access_matrix[(line[0], line[1])] = str(line[2].replace('\n', ''))
-
-    def delete_rights(self, subject_name):
-        with open('access_matrix.txt', 'r') as f:
-            lines = f.readlines()
-        with open('access_matrix.txt', 'w') as f:
-            if "".join(lines[-1:]).split("|")[0] == subject_name:
-                lines[-2:] = lines[-2:][0].replace("\n", "")
+    def load_rights(self):
+        with open('permissions.txt', 'r') as _:
+            lines = _.readlines()
             for line in lines:
-                if line.split("|")[0] != subject_name:
-                    f.writelines(line)
+                line = line.replace('\n', '')
+                line = line.split('|')
+                self.access_list.append_file(line[0], line[1],
+                                             str(line[2] + line[3] + line[4]))
 
     def save_rights(self):
-        with open('access_matrix.txt', 'w') as f:
-            acc_matr = list(self.access_matrix.items())
-            acc_matr = ["|".join(list(["|".join(list(acc_matr[i][0])),
-                                                 str(acc_matr[i][1])])) for i in
-                        range(len(acc_matr))]
-            acc_matr = "\n".join(acc_matr)
-            f.write(acc_matr)
+        with open('permissions.txt', 'w') as _:
+            count = 0
+            for file in self.access_list.files:
+                count += 1
+                if count == len(self.access_list.files):
+                    _.write('|'.join(list(vars(file).values())))
+                else:
+                    _.write(str('|'.join(list(vars(file).values())) + "\n"))
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -267,8 +247,8 @@ class Server:
             if not os.path.isfile(file_name) and self.user.log != "root":
                 self.set_rights(self.user.log, file_name, 6, "u")
                 self.set_rights(self.user.log, file_name, 6, "g")  # user group'''
-            with open(file_name, "w") as f:
-                f.write(text)
+            with open(file_name, "w") as _:
+                _.write(text)
             self.connection.send(str.encode('File was written successfully.\n'))
         return True
 
@@ -332,13 +312,13 @@ class Server:
         rights = command_string[4]
 
         if arg == "u":
-            r = self.access_matrix.get((subject_name, file_name))
+            r = "222"#self.access_matrix.get((subject_name, file_name))
             r = str(rights) + str(r[1])
-            self.set_rights(subject_name, file_name, r)
+            self.change_rights(subject_name, file_name, r)
         else:
-            r = self.access_matrix.get((subject_name, file_name))
+            r = "222"#self.access_matrix.get((subject_name, file_name))
             r = str(r[0]) + str(rights)
-            self.set_rights(subject_name, file_name, r)
+            self.change_rights(subject_name, file_name, r)
         self.connection.send(str.encode("Permissions were updated.\n"))
 
     # admins functions
@@ -366,16 +346,16 @@ class Server:
         self.connection.send(str(new_user.log + " was created successfully.\n").encode())
 
     def userdel(self, user_log):
-        with open("passwords.txt", 'r') as f:
-            logins = f.read().split()
+        with open("passwords.txt", 'r') as _:
+            logins = _.read().split()
             if self.user.log not in logins:
                 self.connection.send("Error: login doesn't exist.\n".encode())
                 return False
         if user_log == self.user.log:
             self.connection.send("Error: suicide is prohibited on the territory of the Russian Federation.\n".encode())
             return False
-        with open("sessions.txt", 'r') as f:
-            logins = f.read().split()
+        with open("sessions.txt", 'r') as _:
+            logins = _.read().split()
         if user_log in logins:
             self.connection.send("Error: cannot delete user while he is logged in\n".encode())
         else:
@@ -384,18 +364,17 @@ class Server:
                                   + "\\" + user_log), ignore_errors=True)
             except OSError:
                 pass
-            with open("passwords.txt", 'r+') as f:
-                lines = f.readlines()
+            with open("passwords.txt", 'r+') as _:
+                lines = _.readlines()
                 lines = [lines[i] for i in range(len(lines)) if user_log not in lines[i]]
             line = "".join(lines[-1:]).replace("\n", "")
             lines = lines[:-1]
             lines.append(line)
-            with open("passwords.txt", 'w') as f:
-                f.writelines(lines)
+            with open("passwords.txt", 'w') as _:
+                _.writelines(lines)
             self.groupdel(user_log, flag=1)
-            self.delete_rights(user_log)
-            with open('groups.txt', 'r') as f:
-                lines = f.readlines()
+            with open('groups.txt', 'r') as _:
+                lines = _.readlines()
                 for line in lines:
                     if user_log in line:
                         self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)
@@ -503,7 +482,7 @@ class Server:
 def multi_threaded_client(connection, user):
     print('Connected with', user[1])
     sr = Server(connection)
-    sr.update_rights()
+    sr.load_rights()
     if sr.auth():
         while True:
             try:
