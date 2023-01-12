@@ -4,7 +4,7 @@ import os
 import shutil
 import hashlib
 import users as u
-import files as f
+import objects as f
 
 count_users = 0
 clr_sessions = False
@@ -15,7 +15,7 @@ class Server:
     def __init__(self, connect):
         self.connection = connect
         self.user = u.User()
-        self.access_list = f.Files()
+        self.access_list = f.Objects()
 
     def check_login(self):
         with open("passwords.txt", 'r') as f:
@@ -106,46 +106,90 @@ class Server:
         except TypeError:
             pass
 
-    def change_rights(self, subject_name, object_name, rights):
+    def add_rights(self, subject_name, object_name, permissions):
+        self.access_list.append_object(object_name, subject_name, str(permissions))
+        self.save_rights()
+
+    def change_rights(self, subject_type, object_name, permission):
         self.load_rights()
+        for obj in self.access_list.objects:
+            if obj.name == object_name:
+                if subject_type == "u":
+                    obj.owner_p = permission
+                elif subject_type == "g":
+                    obj.group_p = permission
+                else:
+                    obj.others_p = permission
+                self.save_rights()
+                break
 
     def get_rights(self, object_name):
-        for file in self.access_list.files:
-            if file.name == object_name:
-                string = list(vars(file).values())
+        for obj in self.access_list.objects:
+            if obj.name == object_name:
+                string = list(vars(obj).values())
                 name = "".join(list(string[0].split("\\"))[-1:])
                 string = string[2] + string[3] + string[4] + \
                          "\t" + string[1] + "\t" + name
                 return str(string + "\n")
+        return False
 
-    def check_rights(self, subject_name, object_name, right_type):
-        for file in self.access_list.files:
-            if file.name == object_name:
-                if file.owner == subject_name:
-                    return int(file.owner_p) >= right_type
-                elif file.owner in self.check_groups(subject_name):
-                    return int(file.group_p) >= right_type
+    def check_rights(self, subject_name, object_name, right_type):  # 2 - write, 4 - read, 6 - write+read
+        for obj in self.access_list.objects:
+            if obj.name == object_name:
+                if obj.owner == subject_name:
+                    if right_type == 2:
+                        if int(obj.owner_p) == 2 or int(obj.owner_p) == 6:
+                            return True
+                        else:
+                            return False
+                    return int(obj.owner_p) >= right_type
+                elif obj.owner in self.check_groups(subject_name):
+                    if right_type == 2:
+                        if int(obj.group_p) == 2 or int(obj.group_p) == 6:
+                            return True
+                        else:
+                            return False
+                    return int(obj.group_p) >= right_type
                 else:
-                    return int(file.others_p) >= right_type
+                    if right_type == 2:
+                        if int(obj.others_p) == 2 or int(obj.others_p) == 6:
+                            return True
+                        else:
+                            return False
+                    return int(obj.others_p) >= right_type
 
     def load_rights(self):
+        self.access_list.objects.clear()
         with open('permissions.txt', 'r') as _:
             lines = _.readlines()
             for line in lines:
                 line = line.replace('\n', '')
                 line = line.split('|')
-                self.access_list.append_file(line[0], line[1],
-                                             str(line[2] + line[3] + line[4]))
+                self.access_list.append_object(line[0], line[1],
+                                               str(line[2] + line[3] + line[4]))
+
+    def delete_rights(self, object_name=None, subject_name=None):
+        if subject_name:
+            for obj in self.access_list.objects:
+                if obj.owner == subject_name:
+                    self.access_list.objects.remove(obj)
+                    break
+        else:
+            for obj in self.access_list.objects:
+                if obj.name == object_name:
+                    self.access_list.objects.remove(obj)
+                    break
+        self.save_rights()
 
     def save_rights(self):
         with open('permissions.txt', 'w') as _:
             count = 0
-            for file in self.access_list.files:
+            for obj in self.access_list.objects:
                 count += 1
-                if count == len(self.access_list.files):
-                    _.write('|'.join(list(vars(file).values())))
+                if count == len(self.access_list.objects):
+                    _.write('|'.join(list(vars(obj).values())))
                 else:
-                    _.write(str('|'.join(list(vars(file).values())) + "\n"))
+                    _.write(str('|'.join(list(vars(obj).values())) + "\n"))
 
     def help(self, command_string):
         if len(list(command_string.split())) != 2:
@@ -165,10 +209,12 @@ class Server:
                 self.connection.send("Usage: logout\nLog the user out of a system.\n".encode())
             elif command_name == "pwd":
                 self.connection.send("Usage: pwd\nPrint the name of the current working directory.\n".encode())
+            elif command_name == "rm":
+                self.connection.send("Usage: rm [filename]\nDelete the file.\n".encode())
             elif command_name == "rr":
-                self.connection.send("Usage: rr [filename]\nPrint the permissions for the file.\n".encode())
+                self.connection.send("Usage: rr [objectName]\nPrint the permissions for the object.\n".encode())
             elif command_name == "chmod":
-                self.connection.send("Usage: chmod [filename] [u|g] [subjectName] [rights]\nChange permissions for file.\n".encode())
+                self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\nChange permission for object.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
@@ -208,12 +254,19 @@ class Server:
         if len(list(command_string.split())) == 1:
             dir_name = self.user.dir
         else:
-            command_string = command_string[2:]
-            dir_name = ' '.join(command_string.split())
+            dir_name = command_string.split()[1]
+            if "/" in dir_name:
+                dir_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(dir_name.split("/")[1:])
+            else:
+                dir_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(dir_name.split("\\")[1:])
             print(dir_name)
-        '''if not self.check_rights(self.user.log, dir_name, 2):
+
+        if not self.check_rights(self.user.log, dir_name, 4):
             self.connection.send(str.encode('Error: access denied.\n'))
-            return False'''
+            return False
+
         files = os.listdir(dir_name)
         files_list = ''
         for file in files:
@@ -241,12 +294,18 @@ class Server:
                 else:
                     file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                             + "\\".join(file_name.split("\\")[1:])
-            '''if not self.check_rights(self.user.log, file_name, 2):
+
+            dir_name = "\\".join(file_name.split("\\")[:-1])
+            if not self.check_rights(self.user.log, dir_name, 2):
                 self.connection.send(str.encode('Error: access denied.\n'))
                 return False
-            if not os.path.isfile(file_name) and self.user.log != "root":
-                self.set_rights(self.user.log, file_name, 6, "u")
-                self.set_rights(self.user.log, file_name, 6, "g")  # user group'''
+
+            if not self.check_rights(self.user.log, file_name, 2):
+                self.connection.send(str.encode('Error: access denied.\n'))
+                return False
+
+            if not os.path.isfile(file_name):
+                self.add_rights(self.user.log, file_name, str(644))  # full access only for owner/read for others subjects
             with open(file_name, "w") as _:
                 _.write(text)
             self.connection.send(str.encode('File was written successfully.\n'))
@@ -264,9 +323,16 @@ class Server:
             else:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                         + "\\".join(file_name.split("\\")[1:])
-        '''if not self.check_rights(self.user.log, file_name, 4):
+
+        dir_name = "\\".join(file_name.split("\\")[:-1])
+        if not self.check_rights(self.user.log, dir_name, 4):
             self.connection.send(str.encode('Error: access denied.\n'))
-            return False'''
+            return False
+
+        if not self.check_rights(self.user.log, file_name, 4):
+            self.connection.send(str.encode('Error: access denied.\n'))
+            return False
+
         try:
             with open(file_name, 'r', encoding='utf-8') as f:
                 try:
@@ -280,7 +346,7 @@ class Server:
         self.connection.send(str.encode(str(len(text))))
         self.connection.send(str(text).encode('utf-8'))
 
-    def rr(self, command_string):   # check rights for file rr filename
+    def rm(self, command_string):
         command_string = command_string.split()
         file_name = command_string[1]
         if file_name[1] != ':':
@@ -288,37 +354,57 @@ class Server:
         else:
             if "/" in file_name:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(file_name.split("/")[1:])
+                              + "\\".join(file_name.split("/")[1:])
             else:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(file_name.split("\\")[1:])
-        rights = "".join(list(self.get_rights(file_name)))
-        self.connection.send(str.encode(rights))
+                              + "\\".join(file_name.split("\\")[1:])
+        try:
+            os.remove(file_name)
+        except OSError:
+            self.connection.send(str.encode("Error: something went wrong.\n"))
+        self.delete_rights(file_name)
+        self.connection.send(str.encode("File was deleted successfully.\n"))
 
-    def chmod(self, command_string):    # chmod filename u|g subjectName rights
+    def rr(self, command_string):   # check rights for object
         command_string = command_string.split()
-        file_name = command_string[1]
-        if file_name[1] != ':':
-            file_name = self.user.dir + '\\' + file_name
+        object_name = command_string[1]
+        if object_name[1] != ':':
+            object_name = self.user.dir + '\\' + object_name
         else:
-            if "/" in file_name:
-                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(file_name.split("/")[1:])
+            if "/" in object_name:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(object_name.split("/")[1:])
             else:
-                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(file_name.split("\\")[1:])
-        arg = command_string[2]
-        subject_name = command_string[3]
-        rights = command_string[4]
-
-        if arg == "u":
-            r = "222"#self.access_matrix.get((subject_name, file_name))
-            r = str(rights) + str(r[1])
-            self.change_rights(subject_name, file_name, r)
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(object_name.split("\\")[1:])
+        rights = self.get_rights(object_name)
+        if rights:
+            rights = "".join(list(rights))
+            self.connection.send(str.encode(rights))
         else:
-            r = "222"#self.access_matrix.get((subject_name, file_name))
-            r = str(r[0]) + str(rights)
-            self.change_rights(subject_name, file_name, r)
+            self.connection.send(str.encode("Error: no such object.\n"))
+
+    def chmod(self, command_string):    # chmod object_name u|g|o permission
+        command_string = command_string.split()
+        object_name = command_string[1]
+        if object_name[1] != ':':
+            object_name = self.user.dir + '\\' + object_name
+        else:
+            if "/" in object_name:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(object_name.split("/")[1:])
+            else:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(object_name.split("\\")[1:])
+        subject_type = command_string[2]
+        permission = command_string[3]
+
+        if subject_type == "u":
+            self.change_rights(subject_type, object_name, permission)
+        elif subject_type == "g":
+            self.change_rights(subject_type, object_name, permission)
+        elif subject_type == "o":
+            self.change_rights(subject_type, object_name, permission)
         self.connection.send(str.encode("Permissions were updated.\n"))
 
     # admins functions
@@ -341,6 +427,11 @@ class Server:
         new_user.path = os.getcwd() + "\\D\\" + new_user.log
         new_user.dir = os.getcwd() + "\\D\\" + new_user.log + "\\home"
         os.makedirs(path)
+
+        # create permissions for home dir
+        self.add_rights(new_user.log, path, str(644))    # full access only for owner and read for others subjects
+        self.add_rights(new_user.log, str(os.getcwd() + "\\D\\" + new_user.log), str(644))
+
         self.groupadd(new_user.log, flag=1)
         self.usermod("usermod -g " + str(new_user.log) + " " + str(new_user.log), flag=1)
         self.connection.send(str(new_user.log + " was created successfully.\n").encode())
@@ -378,6 +469,7 @@ class Server:
                 for line in lines:
                     if user_log in line:
                         self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)
+            self.delete_rights(subject_name=user_log)
             self.connection.send(str(user_log + " was deleted successfully.\n").encode())
 
     def passwd(self, user_log):
@@ -524,9 +616,15 @@ def multi_threaded_client(connection, user):
                         continue
                     else:
                         sr.rr(data.decode('utf-8'))
-                elif command == 'chmod':
-                    if len(list(data.decode('utf-8').split())) < 5:
+                elif command == 'rm':
+                    if len(list(data.decode('utf-8').split())) == 1:
                         connection.send(str.encode("Error: missing file name.\n"))
+                        continue
+                    else:
+                        sr.rm(data.decode('utf-8'))
+                elif command == 'chmod':
+                    if len(list(data.decode('utf-8').split())) < 4:
+                        connection.send(str.encode("Error: missing argument.\n"))
                         continue
                     else:
                         sr.chmod(data.decode('utf-8'))
@@ -601,4 +699,3 @@ if __name__ == "__main__":
         start_new_thread(multi_threaded_client, (Client, address))
         ThreadCount += 1
         print('Thread Number: ' + str(ThreadCount))
-    ServerSideSocket.close()
