@@ -18,3 +18,11 @@ class Groups:
         for group in self.groups:
             if group.name == group_name:
                 self.groups.remove(group)
+
+    def find(self, group_name, user_name):
+        for group in self.groups:
+            if group.name == group_name:
+                if user_name in group.participants:
+                    return True
+                else:
+                    return False

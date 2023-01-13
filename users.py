@@ -5,5 +5,4 @@ class User:
         self.passwd = None
         self.path = None
         self.dir = None  # with /home
-        self.group = None
         self.mark = 0

@@ -9,6 +9,8 @@ import groups as g
 
 count_users = 0
 clr_sessions = False
+mark_a = 5
+mark_o = 4
 
 
 class Server:
@@ -44,6 +46,17 @@ class Server:
                     if self.user.log == line.split()[0] and passwd == line.split()[1]:
                         return True
         self.connection.send("Error: password is incorrect.\nPassword: ".encode())
+        return False
+
+    def check_mark(self, mark):
+        with open("users_marks.txt", 'r') as _:
+            marks = _.readlines()
+            marks_d = dict()
+            for i in range(len(marks)):
+                marks_d[marks[i].split()[0]] = marks[i].split()[1]
+            if mark <= marks_d.get(self.user.log):
+                return True
+        self.connection.send("Error: incorrect mark.\nMark: ".encode())
         return False
 
     @staticmethod
@@ -94,6 +107,7 @@ class Server:
         done = False
         log_checked = False
         passwd_checked = False
+        mark_checked = False
         while not done:
             try:
                 self.connection.send("Login: ".encode())
@@ -112,16 +126,24 @@ class Server:
                         continue
                     passwd_checked = True
 
+                self.connection.send("Mark: ".encode())
+                while not mark_checked:
+                    mark = self.connection.recv(1024).decode()
+                    if not self.check_mark(mark):
+                        continue
+                    self.user.mark = int(mark)
+                    mark_checked = True
+
                 with open("sessions.txt", 'a') as _:
                     _.write(self.user.log + '\n')
                     self.connection.send(str(self.user.log + ' logged in successfully.\n').encode())
                     count_users += 1
                     done = True
+
             except WindowsError:
                 self.logout('unexpected')
                 return False
         print(self.user.log + ': ' + self.user.log + " logged in successfully.")
-        self.user.group = self.check_groups(self.user.log)
         self.create_directory()
         return True
 
@@ -131,8 +153,6 @@ class Server:
         self.user.dir = os.getcwd() + "\\D\\" + self.user.log + "\\home"
         try:
             os.makedirs(path)
-            '''self.set_rights(self, self.user.log, path, 6, "u")
-            self.set_rights(self, self.user.log, path, 6, "g")'''
         except OSError:
             pass
 
@@ -142,8 +162,8 @@ class Server:
         except TypeError:
             pass
 
-    def add_rights(self, subject_name, object_name, permissions):
-        self.access_list.append_object(object_name, subject_name, str(permissions))
+    def add_rights(self, subject_name, object_name, permissions, mark=0):
+        self.access_list.append_object(object_name, subject_name, str(permissions), mark)
         self.save_rights()
 
     def change_rights(self, subject_type, object_name, permission):
@@ -165,11 +185,31 @@ class Server:
             if obj.name == object_name:
                 string = list(vars(obj).values())
                 name = "".join(list(string[0].split("\\"))[-1:])
-                string = string[2] + string[3] + string[4] + "\t" + string[1] + "\t" + name
+                string = string[2] + string[3] + string[4] + "\t" + string[1] + "\t" + name + "\t" + obj.mark
                 return str(string + "\n")
         return False
 
-    def check_rights(self, subject_name, object_name, right_type):  # 2 - write, 4 - read, 6 - write+read
+    @staticmethod
+    def delete_marks(user_name):
+        with open("users_marks.txt", 'r') as _:
+            lines = _.readlines()
+        count = 0
+        with open("users_marks.txt", 'w') as _:
+            for line in lines:
+                line = line.replace("\n", "")
+                if line.split()[0] != user_name:
+                    count += 1
+                    if count != len(lines) - 1:
+                        _.writelines(line + "\n")
+                    else:
+                        _.writelines(line)
+
+    def change_marks(self):
+        pass
+
+    def check_rights_dac(self, subject_name, object_name, right_type):  # 2 - write, 4 - read, 6 - write+read
+        if right_type == 1:
+            right_type = 2
         self.load_rights()
         ret = list()
         for obj in self.access_list.objects:
@@ -192,6 +232,48 @@ class Server:
                 if False in ret:
                     return False
                 return True
+
+    def check_rights_mac(self, subject_name, object_name, right_type):
+        # append: разрешен, если метка юзера меньше, либо равна метке объекта(файла либо директории)
+        # write: разрешен, если метка юзера равна метке объекта
+        # read: разрешен, если метка юзера выше либо равна метке объекта
+        ret = list()
+        for obj in self.access_list.objects:
+            if obj.name == object_name:
+                if obj.owner == subject_name:
+                    if obj.mark == self.user.mark and right_type == 2 or \
+                            self.user.mark >= int(obj.mark) and right_type == 4 or \
+                            self.user.mark <= int(obj.mark) and right_type == 1:
+                        ret.append(True)
+                    else:
+                        ret.append(False)
+                else:
+                    if obj.owner in self.check_groups(subject_name):
+                        if obj.mark == self.user.mark and right_type == 2 or \
+                            self.user.mark >= int(obj.mark) and right_type == 4 or \
+                            self.user.mark <= int(obj.mark) and right_type == 1:
+                            ret.append(True)
+                        else:
+                            ret.append(False)
+                    if obj.owner not in self.check_groups(subject_name):
+                        if obj.mark == self.user.mark and right_type == 2 or \
+                            self.user.mark >= int(obj.mark) and right_type == 4 or \
+                            self.user.mark <= int(obj.mark) and right_type == 1:
+                            ret.append(True)
+                        else:
+                            ret.append(False)
+                if False in ret:
+                    return False
+                return True
+
+    def check_rights(self, subject_name, object_name, right_type):
+        if not self.check_rights_dac(subject_name, object_name, right_type):
+            self.connection.send(str.encode('DAC: access denied.\n'))
+            return
+        if not self.check_rights_mac(subject_name, object_name, right_type):
+            self.connection.send(str.encode('MAC: access denied.\n'))
+            return
+        return True
 
     def load_rights(self):
         self.access_list.objects.clear()
@@ -253,6 +335,11 @@ class Server:
             elif command_name == "chmod":
                 self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\n"
                                      "Change permission for object.\n".encode())
+            elif command_name == "cm":
+                self.connection.send("Usage: cm [u|o] [objectName]\n. Display mark of OBJECT.\n".encode())
+            elif command_name == "touch":
+                self.connection.send("Usage: touch [filename] [permission] [mark]\n"
+                                     "Create new file.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
@@ -301,9 +388,8 @@ class Server:
                             + "\\".join(dir_name.split("\\")[1:])
             print(dir_name)
 
-        if "adm" not in self.user.group:
+        if not self.group_list.find("adm", self.user.log):
             if not self.check_rights(self.user.log, dir_name, 4):
-                self.connection.send(str.encode('Error: access denied.\n'))
                 return False
 
         files = os.listdir(dir_name)
@@ -337,14 +423,12 @@ class Server:
             if not os.path.isfile(file_name):
                 self.add_rights(self.user.log, file_name, str(666))
             else:
-                if "adm" not in self.user.group:
+                if not self.group_list.find("adm", self.user.log):
                     dir_name = "\\".join(file_name.split("\\")[:-1])
                     if not self.check_rights(self.user.log, dir_name, 2):
-                        self.connection.send(str.encode('Error: access denied.\n'))
                         return False
 
                     if not self.check_rights(self.user.log, file_name, 2):
-                        self.connection.send(str.encode('Error: access denied.\n'))
                         return False
             with open(file_name, "w") as _:
                 _.write(text)
@@ -364,14 +448,12 @@ class Server:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                         + "\\".join(file_name.split("\\")[1:])
 
-        if "adm" not in self.user.group:
+        if not self.group_list.find("adm", self.user.log):
             dir_name = "\\".join(file_name.split("\\")[:-1])
             if not self.check_rights(self.user.log, dir_name, 4):
-                self.connection.send(str.encode('Error: access denied.\n'))
                 return False
 
             if not self.check_rights(self.user.log, file_name, 4):
-                self.connection.send(str.encode('Error: access denied.\n'))
                 return False
 
         try:
@@ -471,14 +553,12 @@ class Server:
                     file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                             + "\\".join(file_name.split("\\")[1:])
 
-            if "adm" not in self.user.group:
+            if not self.group_list.find("adm", self.user.log):
                 dir_name = "\\".join(file_name.split("\\")[:-1])
-                if not self.check_rights(self.user.log, dir_name, 2):
-                    self.connection.send(str.encode('Error: access denied.\n'))
+                if not self.check_rights(self.user.log, dir_name, 1):
                     return False
 
-                if not self.check_rights(self.user.log, file_name, 2):
-                    self.connection.send(str.encode('Error: access denied.\n'))
+                if not self.check_rights(self.user.log, file_name, 1):
                     return False
 
             if not os.path.isfile(file_name):
@@ -512,6 +592,26 @@ class Server:
             self.connection.send(str.encode("Error: wrong argument.\n"))
             return False
 
+    def touch(self, command_string):
+        command_string = command_string.split()
+        file_name = command_string[1]
+        if file_name[1] != ':':
+            file_name = self.user.dir + '\\' + file_name
+        else:
+            if "/" in file_name:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(file_name.split("/")[1:])
+            else:
+                file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(file_name.split("\\")[1:])
+        try:
+            with open(file_name, "w"):
+                pass
+        except OSError:
+            self.connection.send(str.encode("Error: something went wrong.\n"))
+        self.add_rights(self.user.log, file_name, str(command_string[2]), command_string[3])
+        self.connection.send(str.encode("File was created successfully.\n"))
+
     # admins functions
     def useradd(self):
         new_user = u.User()
@@ -527,6 +627,10 @@ class Server:
         with open("passwords.txt", 'a') as _:
             hashed_passwd = hashlib.sha256(new_user.passwd.encode('utf-8')).hexdigest()
             _.write(str('\n' + new_user.log + ' ' + hashed_passwd))
+        self.connection.send("New mark: ".encode())
+        new_user.mark = self.connection.recv(1024).decode()
+        with open("users_marks.txt", 'a') as _:
+            _.writelines(str("\n" + str(new_user.log) + " " + str(new_user.mark)))
         # create directory
         try:
             path = os.getcwd() + "\\D\\" + new_user.log + "\\home"
@@ -572,12 +676,8 @@ class Server:
             lines.append(line)
             with open("passwords.txt", 'w') as _:
                 _.writelines(lines)
+            self.delete_marks(user_log)
             self.groupdel(user_log, flag=1)
-            '''with open('groups.txt', 'r') as _:
-                lines = _.readlines()
-                for line in lines:
-                    if user_log in line:
-                        self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)'''
             for group in self.group_list.groups:
                 if user_log in group.participants:
                     group.participants.remove(user_log)
@@ -611,6 +711,11 @@ class Server:
         users_string = ''
         with open("passwords.txt", 'r') as _:
             lines = _.readlines()
+        with open("users_marks.txt", "r") as __:
+            marks = __.readlines()
+            marks_d = dict()
+            for i in range(len(marks)):
+                marks_d[marks[i].split()[0]] = marks[i].split()[1]
         if user_log:
             for line in lines:
                 if user_log in line.split():
@@ -619,6 +724,7 @@ class Server:
                     users_string += str('*directory: ' + "D:\\" + line.split()[0] + '\n')
                     groups = self.check_groups(line.split()[0])
                     users_string += ('*groups: ' + ' '.join(groups) + '\n')
+                    users_string += str('*mark: ' + marks_d.get(line.split()[0]) + "\n")
                     break
         else:
             for line in lines:
@@ -628,23 +734,15 @@ class Server:
                     users_string += str('*directory: ' + "D:\\" + line.split()[0] + '\n')
                     groups = self.check_groups(line.split()[0])
                     users_string += ('*groups: ' + ' '.join(groups) + '\n')
+                    users_string += str('*mark: ' + marks_d.get(line.split()[0]) + "\n")
         self.connection.send(users_string.encode())
 
-    def groupadd(self, group_name, flag=None):    # create group
-        '''with open('groups.txt', 'r') as _:
-            lines = _.readlines()
-        with open('groups.txt', 'w') as _:
-            for line in lines:
-                _.writelines(line)
-                if str(group_name + ":") in line.split():
-                    self.connection.send(str.encode("Error: this group already exists.\n"))
-                    return False
-            _.writelines('\n' + str(group_name) + ':')'''
+    def groupadd(self, group_name, flag=None, mark=0):    # create group
         for group in self.group_list.groups:
             if group.name == group_name:
                 self.connection.send(str.encode("Error: this group already exists.\n"))
                 return False
-        self.group_list.append_group(group_name, list(), 4)
+        self.group_list.append_group(group_name, list(), mark)
         self.save_groups()
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
@@ -658,25 +756,10 @@ class Server:
             lines = _.readlines()
         if group_name in "".join(lines).replace(":", ""):
             if arg == 'g':  # добавить пользователя в группу(-g)
-                '''with open('groups.txt', 'w') as _:
-                    for line in lines:
-                        if line.split()[0][:-1] == group_name:
-                            if line[-1:] == "\n":
-                                line += ' ' + str(user_name)
-                                line = line.replace("\n", "")
-                                line += "\n"
-                            else:
-                                line += ' ' + str(user_name)
-                        _.writelines(line.replace("  ", " "))'''
                 for group in self.group_list.groups:
                     if group.name == group_name:
                         group.participants.append(user_name)
             else:    # удалить пользователя из группы(-r)
-                '''with open('groups.txt', 'w') as _:
-                    for line in lines:
-                        if line.split()[0][:-1] == group_name:
-                            line = line.split(":")[0] + ":" + str(line.replace(str(user_name), "").split(":")[1])
-                        _.writelines(line.replace("  ", " "))'''
                 for group in self.group_list.groups:
                     if group.name == group_name:
                         group.participants.remove(user_name)
@@ -687,16 +770,6 @@ class Server:
             self.connection.send(str.encode("Group with this name doesn't exist.\n"))
 
     def groupdel(self, group_name, flag=None):
-        '''with open('groups.txt', 'r') as _:
-            lines = _.readlines()
-        if "".join(lines[-1:]).split()[0] == str(group_name + ":"):
-            string = str.strip("".join(lines[-2:][0]))
-            lines = lines[:-2]
-            lines.append(string)
-        with open('groups.txt', 'w') as _:
-            for line in lines:
-                if line.split()[0][:-1] != group_name:
-                    _.writelines(line)'''
         flag_g = False
         for group in self.group_list.groups:
             if group.name == group_name:
@@ -784,7 +857,15 @@ def multi_threaded_client(connection, user):
                     else:
                         if not sr.cm(data.decode('utf-8')):
                             continue
-                elif 'adm' in sr.user.group:
+                elif command == 'touch':
+                    args = len(list(data.decode('utf-8').split()))
+                    if args < 4:
+                        connection.send(str.encode("Error: missing argument.\n"))
+                        continue
+                    else:
+                        if not sr.touch(data.decode('utf-8')):
+                            continue
+                elif sr.group_list.find("adm", sr.user.log):
                     if command == 'useradd':
                         if len(data.split()) > 1:
                             connection.send("Error: too many arguments\n".encode())
@@ -805,10 +886,10 @@ def multi_threaded_client(connection, user):
                     elif command == 'userinfo':
                         sr.userinfo(data.decode('utf-8'))
                     elif command == 'groupadd':
-                        if len(data.decode('utf-8').split()) != 2:
+                        if len(data.decode('utf-8').split()) < 2:
                             connection.send("Error: missing argument\n".encode())
                             continue
-                        if not sr.groupadd(data.decode('utf-8').split()[1]):
+                        if not sr.groupadd(data.decode('utf-8').split()[1], mark=data.decode('utf-8').split()[2]):
                             continue
                     elif command == 'usermod':
                         if len(data.decode('utf-8').split()) != 4:
