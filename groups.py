@@ -13,3 +13,8 @@ class Groups:
 
     def append_group(self, group_name, participants, mark):
         self.groups.append(Group(group_name, participants, str(mark)))
+
+    def delete_group(self, group_name):
+        for group in self.groups:
+            if group.name == group_name:
+                self.groups.remove(group)

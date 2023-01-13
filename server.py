@@ -19,35 +19,35 @@ class Server:
         self.access_list = f.Objects()
         self.group_list = g.Groups()
 
-
     def check_login(self):
-        with open("passwords.txt", 'r') as f:
-            logins = f.read().split()
+        with open("passwords.txt", 'r') as _:
+            logins = _.read().split()
             if self.user.log in logins:
                 return True
         self.connection.send("Error: login doesn't exist.\nLogin: ".encode())
         return False
 
     def check_session(self):
-        with open("sessions.txt", 'r') as f:
-            logins = f.read().split()
+        with open("sessions.txt", 'r') as _:
+            logins = _.read().split()
             if self.user.log not in logins:
                 return True
         self.connection.send("Error: you already logged in.\nLogin: ".encode())
         return False
 
     def check_password(self):
-        with open("passwords.txt", 'r') as f:
+        with open("passwords.txt", 'r') as _:
             passwd_hash = hashlib.sha256(self.user.passwd.encode())
             passwd = passwd_hash.hexdigest()
-            for line in f:
+            for line in _:
                 if len(line) > 1:
                     if self.user.log == line.split()[0] and passwd == line.split()[1]:
                         return True
         self.connection.send("Error: password is incorrect.\nPassword: ".encode())
         return False
 
-    def check_groups(self, login):
+    @staticmethod
+    def check_groups(login):
         with open('groups.txt', 'r') as _:
             lines = _.readlines()
         groups = []
@@ -70,6 +70,24 @@ class Server:
                 line = line.replace('\n', '')
                 line = line.split(':')
                 self.group_list.append_group(line[0], list(line[1].split()), marks_d.get(line[0]))
+
+    def save_groups(self):
+        count = 0
+        with open('groups.txt', 'w') as _:
+            for group in self.group_list.groups:
+                count += 1
+                if count != len(self.group_list.groups):
+                    _.writelines(str(group.name + ": " + " ".join(group.participants) + "\n"))
+                else:
+                    _.writelines(str(group.name + ": " + " ".join(group.participants)))
+        count = 0
+        with open("groups_marks.txt", "w") as __:
+            for group in self.group_list.groups:
+                count += 1
+                if count != len(self.group_list.groups):
+                    __.writelines(str(group.name + " " + str(group.mark) + "\n"))
+                else:
+                    __.writelines(str(group.name + " " + str(group.mark)))
 
     def auth(self):
         global count_users
@@ -94,8 +112,8 @@ class Server:
                         continue
                     passwd_checked = True
 
-                with open("sessions.txt", 'a') as f:
-                    f.write(self.user.log + '\n')
+                with open("sessions.txt", 'a') as _:
+                    _.write(self.user.log + '\n')
                     self.connection.send(str(self.user.log + ' logged in successfully.\n').encode())
                     count_users += 1
                     done = True
@@ -147,8 +165,7 @@ class Server:
             if obj.name == object_name:
                 string = list(vars(obj).values())
                 name = "".join(list(string[0].split("\\"))[-1:])
-                string = string[2] + string[3] + string[4] + \
-                         "\t" + string[1] + "\t" + name
+                string = string[2] + string[3] + string[4] + "\t" + string[1] + "\t" + name
                 return str(string + "\n")
         return False
 
@@ -234,7 +251,8 @@ class Server:
             elif command_name == "rr":
                 self.connection.send("Usage: rr [objectName]\nPrint the permissions for the object.\n".encode())
             elif command_name == "chmod":
-                self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\nChange permission for object.\n".encode())
+                self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\n"
+                                     "Change permission for object.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
@@ -250,13 +268,13 @@ class Server:
             with open('sessions.txt', 'wb'):
                 pass
         else:
-            with open("sessions.txt", "r") as f:
-                file = list(f)
-            with open("sessions.txt", "w") as f:
+            with open("sessions.txt", "r") as _:
+                file = list(_)
+            with open("sessions.txt", "w") as _:
                 if str(self.user.log + '\n') in file:
                     file.remove(self.user.log + '\n')
                 for line in file:
-                    f.write(line)
+                    _.write(line)
         if unexpected is not None:
             print('Error: lost connection with', self.user.log + '.')
         else:
@@ -317,7 +335,7 @@ class Server:
                             + "\\".join(file_name.split("\\")[1:])
 
             if not os.path.isfile(file_name):
-                self.add_rights(self.user.log, file_name, str(644))#, str(self.user.mark))  # full access only for owner/read for others subjects
+                self.add_rights(self.user.log, file_name, str(666))
             else:
                 if "adm" not in self.user.group:
                     dir_name = "\\".join(file_name.split("\\")[:-1])
@@ -357,9 +375,9 @@ class Server:
                 return False
 
         try:
-            with open(file_name, 'r', encoding='utf-8') as f:
+            with open(file_name, 'r', encoding='utf-8') as _:
                 try:
-                    text = f.read()
+                    text = _.read()
                 except UnicodeDecodeError:
                     self.connection.send(str.encode('UnicodeDecodeError: utf-8 codec can\'t decode.\n'))
                     return False
@@ -464,7 +482,8 @@ class Server:
                     return False
 
             if not os.path.isfile(file_name):
-                self.add_rights(self.user.log, file_name, str(644))  # full access only for owner/read for others subjects
+                self.connection.send(str.encode('Error: file is not exist.\n'))
+                return False
             with open(file_name, "a") as _:
                 _.write(text)
             self.connection.send(str.encode('File was written successfully.\n'))
@@ -519,8 +538,8 @@ class Server:
             return False
 
         # create permissions for home dir
-        self.add_rights(new_user.log, path, str(644))    # full access only for owner and read for others subjects
-        self.add_rights(new_user.log, str(os.getcwd() + "\\D\\" + new_user.log), str(644))
+        self.add_rights(new_user.log, path, str(666))    # full access only for owner and read for others subjects
+        self.add_rights(new_user.log, str(os.getcwd() + "\\D\\" + new_user.log), str(666))
 
         self.groupadd(new_user.log, flag=1)
         self.usermod("usermod -g " + str(new_user.log) + " " + str(new_user.log), flag=1)
@@ -554,11 +573,16 @@ class Server:
             with open("passwords.txt", 'w') as _:
                 _.writelines(lines)
             self.groupdel(user_log, flag=1)
-            with open('groups.txt', 'r') as _:
+            '''with open('groups.txt', 'r') as _:
                 lines = _.readlines()
                 for line in lines:
                     if user_log in line:
-                        self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)
+                        self.usermod("usermod -r " + str(line.split()[0][:-1]) + " " + str(user_log), flag=1)'''
+            for group in self.group_list.groups:
+                if user_log in group.participants:
+                    group.participants.remove(user_log)
+            self.group_list.delete_group(user_log)
+            self.save_groups()
             self.delete_rights(subject_name=user_log)
             self.connection.send(str(user_log + " was deleted successfully.\n").encode())
 
@@ -571,13 +595,13 @@ class Server:
             self.connection.send("Error: passwords do not match\n".encode())
             return False
         hashed_new_passwd = hashlib.sha256(new_passwd.encode('utf-8')).hexdigest()
-        with open("passwords.txt", 'r+') as f:
-            lines = f.readlines()
-        with open("passwords.txt", 'w') as f:
+        with open("passwords.txt", 'r+') as _:
+            lines = _.readlines()
+        with open("passwords.txt", 'w') as _:
             for line in lines:
                 if user_log in line:
                     line = str(user_log + ' ' + hashed_new_passwd + '\n')
-                f.writelines(line)
+                _.writelines(line)
         self.connection.send("passwd: password updated successfully\n".encode())
 
     def userinfo(self, command_string):
@@ -585,8 +609,8 @@ class Server:
         if len(command_string.split()) > 1:
             user_log = command_string.split()[1]
         users_string = ''
-        with open("passwords.txt", 'r') as f:
-            lines = f.readlines()
+        with open("passwords.txt", 'r') as _:
+            lines = _.readlines()
         if user_log:
             for line in lines:
                 if user_log in line.split():
@@ -607,7 +631,7 @@ class Server:
         self.connection.send(users_string.encode())
 
     def groupadd(self, group_name, flag=None):    # create group
-        with open('groups.txt', 'r') as _:
+        '''with open('groups.txt', 'r') as _:
             lines = _.readlines()
         with open('groups.txt', 'w') as _:
             for line in lines:
@@ -615,7 +639,13 @@ class Server:
                 if str(group_name + ":") in line.split():
                     self.connection.send(str.encode("Error: this group already exists.\n"))
                     return False
-            _.writelines('\n' + str(group_name) + ':')
+            _.writelines('\n' + str(group_name) + ':')'''
+        for group in self.group_list.groups:
+            if group.name == group_name:
+                self.connection.send(str.encode("Error: this group already exists.\n"))
+                return False
+        self.group_list.append_group(group_name, list(), 4)
+        self.save_groups()
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
 
@@ -624,11 +654,11 @@ class Server:
         arg = command_string[1][1]
         group_name = command_string[2]
         user_name = command_string[3]
-        with open('groups.txt', 'r') as f:
-            lines = f.readlines()
+        with open('groups.txt', 'r') as _:
+            lines = _.readlines()
         if group_name in "".join(lines).replace(":", ""):
             if arg == 'g':  # добавить пользователя в группу(-g)
-                with open('groups.txt', 'w') as f:
+                '''with open('groups.txt', 'w') as _:
                     for line in lines:
                         if line.split()[0][:-1] == group_name:
                             if line[-1:] == "\n":
@@ -637,29 +667,45 @@ class Server:
                                 line += "\n"
                             else:
                                 line += ' ' + str(user_name)
-                        f.writelines(line.replace("  ", " "))
+                        _.writelines(line.replace("  ", " "))'''
+                for group in self.group_list.groups:
+                    if group.name == group_name:
+                        group.participants.append(user_name)
             else:    # удалить пользователя из группы(-r)
-                with open('groups.txt', 'w') as f:
+                '''with open('groups.txt', 'w') as _:
                     for line in lines:
                         if line.split()[0][:-1] == group_name:
                             line = line.split(":")[0] + ":" + str(line.replace(str(user_name), "").split(":")[1])
-                        f.writelines(line.replace("  ", " "))
+                        _.writelines(line.replace("  ", " "))'''
+                for group in self.group_list.groups:
+                    if group.name == group_name:
+                        group.participants.remove(user_name)
+            self.save_groups()
             if flag is None:
                 self.connection.send(str.encode("Group list was updated.\n"))
         else:
             self.connection.send(str.encode("Group with this name doesn't exist.\n"))
 
     def groupdel(self, group_name, flag=None):
-        with open('groups.txt', 'r') as f:
-            lines = f.readlines()
+        '''with open('groups.txt', 'r') as _:
+            lines = _.readlines()
         if "".join(lines[-1:]).split()[0] == str(group_name + ":"):
             string = str.strip("".join(lines[-2:][0]))
             lines = lines[:-2]
             lines.append(string)
-        with open('groups.txt', 'w') as f:
+        with open('groups.txt', 'w') as _:
             for line in lines:
                 if line.split()[0][:-1] != group_name:
-                    f.writelines(line)
+                    _.writelines(line)'''
+        flag_g = False
+        for group in self.group_list.groups:
+            if group.name == group_name:
+                flag_g = True
+        if not flag_g:
+            self.connection.send(str.encode("Error: this group is not exist.\n"))
+            return False
+        self.group_list.delete_group(group_name)
+        self.save_groups()
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
 
