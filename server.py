@@ -5,6 +5,7 @@ import shutil
 import hashlib
 import users as u
 import objects as f
+import groups as g
 
 count_users = 0
 clr_sessions = False
@@ -16,6 +17,8 @@ class Server:
         self.connection = connect
         self.user = u.User()
         self.access_list = f.Objects()
+        self.group_list = g.Groups()
+
 
     def check_login(self):
         with open("passwords.txt", 'r') as f:
@@ -52,6 +55,21 @@ class Server:
             if login in line.split():
                 groups.append(line.split()[0][:-1])
         return groups
+
+    def load_groups(self):
+        self.group_list.groups.clear()
+        with open("groups_marks.txt", "r") as __:
+            marks = __.readlines()
+            marks_d = dict()
+            for i in range(len(marks)):
+                marks_d[marks[i].split()[0]] = marks[i].split()[1]
+
+        with open('groups.txt', 'r') as _:
+            lines = _.readlines()
+            for line in lines:
+                line = line.replace('\n', '')
+                line = line.split(':')
+                self.group_list.append_group(line[0], list(line[1].split()), marks_d.get(line[0]))
 
     def auth(self):
         global count_users
@@ -120,10 +138,11 @@ class Server:
                     obj.group_p = permission
                 else:
                     obj.others_p = permission
-                self.save_rights()
                 break
+        self.save_rights()
 
     def get_rights(self, object_name):
+        self.load_rights()
         for obj in self.access_list.objects:
             if obj.name == object_name:
                 string = list(vars(obj).values())
@@ -134,29 +153,28 @@ class Server:
         return False
 
     def check_rights(self, subject_name, object_name, right_type):  # 2 - write, 4 - read, 6 - write+read
+        self.load_rights()
+        ret = list()
         for obj in self.access_list.objects:
             if obj.name == object_name:
                 if obj.owner == subject_name:
-                    if right_type == 2:
-                        if int(obj.owner_p) == 2 or int(obj.owner_p) == 6:
-                            return True
-                        else:
-                            return False
-                    return int(obj.owner_p) >= right_type
-                elif obj.owner in self.check_groups(subject_name):
-                    if right_type == 2:
-                        if int(obj.group_p) == 2 or int(obj.group_p) == 6:
-                            return True
-                        else:
-                            return False
-                    return int(obj.group_p) >= right_type
+                    if int(obj.group_p) == right_type or int(obj.group_p) == 6:
+                        ret.append(True)
+                    else:
+                        ret.append(False)
                 else:
-                    if right_type == 2:
-                        if int(obj.others_p) == 2 or int(obj.others_p) == 6:
-                            return True
+                    if obj.owner in self.check_groups(subject_name):
+                        if int(obj.group_p) == right_type or int(obj.group_p) == 6:
+                            ret.append(True)
                         else:
-                            return False
-                    return int(obj.others_p) >= right_type
+                            ret.append(False)
+                    if int(obj.others_p) == right_type or int(obj.others_p) == 6:
+                        ret.append(True)
+                    else:
+                        ret.append(False)
+                if False in ret:
+                    return False
+                return True
 
     def load_rights(self):
         self.access_list.objects.clear()
@@ -166,7 +184,7 @@ class Server:
                 line = line.replace('\n', '')
                 line = line.split('|')
                 self.access_list.append_object(line[0], line[1],
-                                               str(line[2] + line[3] + line[4]))
+                                               str(line[2] + line[3] + line[4]), str(line[5]))
 
     def delete_rights(self, object_name=None, subject_name=None):
         delete = list()
@@ -298,18 +316,18 @@ class Server:
                     file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                             + "\\".join(file_name.split("\\")[1:])
 
-            if "adm" not in self.user.group:
-                dir_name = "\\".join(file_name.split("\\")[:-1])
-                if not self.check_rights(self.user.log, dir_name, 2):
-                    self.connection.send(str.encode('Error: access denied.\n'))
-                    return False
-
-                if not self.check_rights(self.user.log, file_name, 2):
-                    self.connection.send(str.encode('Error: access denied.\n'))
-                    return False
-
             if not os.path.isfile(file_name):
-                self.add_rights(self.user.log, file_name, str(644))  # full access only for owner/read for others subjects
+                self.add_rights(self.user.log, file_name, str(644))#, str(self.user.mark))  # full access only for owner/read for others subjects
+            else:
+                if "adm" not in self.user.group:
+                    dir_name = "\\".join(file_name.split("\\")[:-1])
+                    if not self.check_rights(self.user.log, dir_name, 2):
+                        self.connection.send(str.encode('Error: access denied.\n'))
+                        return False
+
+                    if not self.check_rights(self.user.log, file_name, 2):
+                        self.connection.send(str.encode('Error: access denied.\n'))
+                        return False
             with open(file_name, "w") as _:
                 _.write(text)
             self.connection.send(str.encode('File was written successfully.\n'))
@@ -416,6 +434,64 @@ class Server:
         elif subject_type == "o":
             self.change_rights(subject_type, object_name, permission)
         self.connection.send(str.encode("Permissions were updated.\n"))
+
+    def append(self, command_string):
+        amount_expected = command_string.split()[2]
+        text = ' '.join(list(command_string.split()[3:]))
+        amount_received = len(text)
+        if amount_received == amount_expected:
+            self.connection.send(str.encode("Error: data was corrupted.\n"))
+        else:
+            file_name = command_string.split()[1]
+            if file_name[1] != ':':
+                file_name = str(self.user.dir + '\\' + command_string.split()[1])
+            else:
+                if "/" in file_name:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(file_name.split("/")[1:])
+                else:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                            + "\\".join(file_name.split("\\")[1:])
+
+            if "adm" not in self.user.group:
+                dir_name = "\\".join(file_name.split("\\")[:-1])
+                if not self.check_rights(self.user.log, dir_name, 2):
+                    self.connection.send(str.encode('Error: access denied.\n'))
+                    return False
+
+                if not self.check_rights(self.user.log, file_name, 2):
+                    self.connection.send(str.encode('Error: access denied.\n'))
+                    return False
+
+            if not os.path.isfile(file_name):
+                self.add_rights(self.user.log, file_name, str(644))  # full access only for owner/read for others subjects
+            with open(file_name, "a") as _:
+                _.write(text)
+            self.connection.send(str.encode('File was written successfully.\n'))
+        return True
+
+    def cm(self, command_string):   # cm -u|-g|-o name
+        command_string = command_string.split()
+        if command_string[1] == '-u':
+            self.connection.send(str.encode(str(command_string[2] + "\t" + str(self.user.mark) + "\n")))
+        elif command_string[1] == '-o':
+            file_name = command_string[2]
+            if file_name[1] != ':':
+                file_name = self.user.dir + '\\' + file_name
+            else:
+                if "/" in file_name:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(file_name.split("/")[1:])
+                else:
+                    file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(file_name.split("\\")[1:])
+            for obj in self.access_list.objects:
+                if obj.name == file_name:
+                    self.connection.send(str.encode(str(command_string[2] + "\t" + str(obj.mark) + "\n")))
+                    break
+        else:
+            self.connection.send(str.encode("Error: wrong argument.\n"))
+            return False
 
     # admins functions
     def useradd(self):
@@ -592,6 +668,7 @@ def multi_threaded_client(connection, user):
     print('Connected with', user[1])
     sr = Server(connection)
     sr.load_rights()
+    sr.load_groups()
     if sr.auth():
         while True:
             try:
@@ -645,6 +722,21 @@ def multi_threaded_client(connection, user):
                         continue
                     else:
                         if not sr.chmod(data.decode('utf-8')):
+                            continue
+                elif command == 'append':
+                    args = len(list(data.decode('utf-8').split()))
+                    if args < 3:
+                        connection.send(str.encode("Error: missing argument.\n"))
+                        continue
+                    else:
+                        if not sr.append(data.decode('utf-8')):
+                            continue
+                elif command == 'cm':
+                    if len(list(data.decode('utf-8').split())) < 3:
+                        connection.send(str.encode("Error: missing argument.\n"))
+                        continue
+                    else:
+                        if not sr.cm(data.decode('utf-8')):
                             continue
                 elif 'adm' in sr.user.group:
                     if command == 'useradd':

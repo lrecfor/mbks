@@ -45,14 +45,15 @@ while True:
         message = input()
     else:
         message = input(str(login))
-    if message.split()[0] == 'write':
+    if message.split()[0] == 'write' or message.split()[0] == 'append':
+        cmd = message.split()[0]
         if len(message.split()) < 3:
             ClientMultiSocket.send(str.encode(message))
             continue
         file_name = message.split()[1]
         text = ' '.join(list(message.split()[2:]))
         text_size = str(len(text))
-        string = 'write ' + file_name + ' ' + text_size + ' ' + text
+        string = cmd + ' ' + file_name + ' ' + text_size + ' ' + text
         ClientMultiSocket.send(str.encode(string))
         continue
     ClientMultiSocket.send(str.encode(message))
