@@ -169,12 +169,14 @@ class Server:
                                                str(line[2] + line[3] + line[4]))
 
     def delete_rights(self, object_name=None, subject_name=None):
+        delete = list()
         if subject_name:
             for obj in self.access_list.objects:
                 if obj.owner == subject_name:
-                    self.access_list.objects.remove(obj)
-                    break
-        else:
+                    delete.append(obj)
+            for obj in delete:
+                self.access_list.objects.remove(obj)
+        elif object_name:
             for obj in self.access_list.objects:
                 if obj.name == object_name:
                     self.access_list.objects.remove(obj)
@@ -263,9 +265,10 @@ class Server:
                             + "\\".join(dir_name.split("\\")[1:])
             print(dir_name)
 
-        if not self.check_rights(self.user.log, dir_name, 4):
-            self.connection.send(str.encode('Error: access denied.\n'))
-            return False
+        if "adm" not in self.user.group:
+            if not self.check_rights(self.user.log, dir_name, 4):
+                self.connection.send(str.encode('Error: access denied.\n'))
+                return False
 
         files = os.listdir(dir_name)
         files_list = ''
@@ -295,14 +298,15 @@ class Server:
                     file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                             + "\\".join(file_name.split("\\")[1:])
 
-            dir_name = "\\".join(file_name.split("\\")[:-1])
-            if not self.check_rights(self.user.log, dir_name, 2):
-                self.connection.send(str.encode('Error: access denied.\n'))
-                return False
+            if "adm" not in self.user.group:
+                dir_name = "\\".join(file_name.split("\\")[:-1])
+                if not self.check_rights(self.user.log, dir_name, 2):
+                    self.connection.send(str.encode('Error: access denied.\n'))
+                    return False
 
-            if not self.check_rights(self.user.log, file_name, 2):
-                self.connection.send(str.encode('Error: access denied.\n'))
-                return False
+                if not self.check_rights(self.user.log, file_name, 2):
+                    self.connection.send(str.encode('Error: access denied.\n'))
+                    return False
 
             if not os.path.isfile(file_name):
                 self.add_rights(self.user.log, file_name, str(644))  # full access only for owner/read for others subjects
@@ -324,14 +328,15 @@ class Server:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                         + "\\".join(file_name.split("\\")[1:])
 
-        dir_name = "\\".join(file_name.split("\\")[:-1])
-        if not self.check_rights(self.user.log, dir_name, 4):
-            self.connection.send(str.encode('Error: access denied.\n'))
-            return False
+        if "adm" not in self.user.group:
+            dir_name = "\\".join(file_name.split("\\")[:-1])
+            if not self.check_rights(self.user.log, dir_name, 4):
+                self.connection.send(str.encode('Error: access denied.\n'))
+                return False
 
-        if not self.check_rights(self.user.log, file_name, 4):
-            self.connection.send(str.encode('Error: access denied.\n'))
-            return False
+            if not self.check_rights(self.user.log, file_name, 4):
+                self.connection.send(str.encode('Error: access denied.\n'))
+                return False
 
         try:
             with open(file_name, 'r', encoding='utf-8') as f:
@@ -387,15 +392,20 @@ class Server:
     def chmod(self, command_string):    # chmod object_name u|g|o permission
         command_string = command_string.split()
         object_name = command_string[1]
-        if object_name[1] != ':':
-            object_name = self.user.dir + '\\' + object_name
-        else:
-            if "/" in object_name:
-                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(object_name.split("/")[1:])
+        try:
+            if object_name[1] != ':':
+                object_name = self.user.dir + '\\' + object_name
             else:
-                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
-                            + "\\".join(object_name.split("\\")[1:])
+                if "/" in object_name:
+                    object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(object_name.split("/")[1:])
+                else:
+                    object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                + "\\".join(object_name.split("\\")[1:])
+        except IndexError:
+            self.connection.send(str.encode("Error: something went wrong.\n"))
+            return False
+
         subject_type = command_string[2]
         permission = command_string[3]
 
@@ -412,21 +422,25 @@ class Server:
         new_user = u.User()
         self.connection.send("New login: ".encode())
         new_user.log = self.connection.recv(1024).decode()
-        with open("passwords.txt", 'r') as f:
-            logins = f.read()
+        with open("passwords.txt", 'r') as _:
+            logins = _.read()
             if new_user.log in logins.split():
                 self.connection.send("Error: user is already exist.\n".encode())
                 return False
         self.connection.send("New password: ".encode())
         new_user.passwd = self.connection.recv(1024).decode()
-        with open("passwords.txt", 'a') as f:
+        with open("passwords.txt", 'a') as _:
             hashed_passwd = hashlib.sha256(new_user.passwd.encode('utf-8')).hexdigest()
-            f.write(str('\n' + new_user.log + ' ' + hashed_passwd))
+            _.write(str('\n' + new_user.log + ' ' + hashed_passwd))
         # create directory
-        path = os.getcwd() + "\\D\\" + new_user.log + "\\home"
-        new_user.path = os.getcwd() + "\\D\\" + new_user.log
-        new_user.dir = os.getcwd() + "\\D\\" + new_user.log + "\\home"
-        os.makedirs(path)
+        try:
+            path = os.getcwd() + "\\D\\" + new_user.log + "\\home"
+            new_user.path = os.getcwd() + "\\D\\" + new_user.log
+            new_user.dir = os.getcwd() + "\\D\\" + new_user.log + "\\home"
+            os.makedirs(path)
+        except OSError:
+            self.connection.send("Error: something went wrong.\n".encode())
+            return False
 
         # create permissions for home dir
         self.add_rights(new_user.log, path, str(644))    # full access only for owner and read for others subjects
@@ -517,12 +531,15 @@ class Server:
         self.connection.send(users_string.encode())
 
     def groupadd(self, group_name, flag=None):    # create group
-        with open('groups.txt', 'r') as f:
-            lines = f.readlines()
-        with open('groups.txt', 'w') as f:
+        with open('groups.txt', 'r') as _:
+            lines = _.readlines()
+        with open('groups.txt', 'w') as _:
             for line in lines:
-                f.writelines(line)
-            f.writelines('\n' + str(group_name) + ':')
+                _.writelines(line)
+                if str(group_name + ":") in line.split():
+                    self.connection.send(str.encode("Error: this group already exists.\n"))
+                    return False
+            _.writelines('\n' + str(group_name) + ':')
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
 
@@ -627,7 +644,8 @@ def multi_threaded_client(connection, user):
                         connection.send(str.encode("Error: missing argument.\n"))
                         continue
                     else:
-                        sr.chmod(data.decode('utf-8'))
+                        if not sr.chmod(data.decode('utf-8')):
+                            continue
                 elif 'adm' in sr.user.group:
                     if command == 'useradd':
                         if len(data.split()) > 1:
@@ -652,7 +670,8 @@ def multi_threaded_client(connection, user):
                         if len(data.decode('utf-8').split()) != 2:
                             connection.send("Error: missing argument\n".encode())
                             continue
-                        sr.groupadd(data.decode('utf-8').split()[1])
+                        if not sr.groupadd(data.decode('utf-8').split()[1]):
+                            continue
                     elif command == 'usermod':
                         if len(data.decode('utf-8').split()) != 4:
                             connection.send("Error: missing argument\n".encode())
