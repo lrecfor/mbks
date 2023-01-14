@@ -281,19 +281,22 @@ class Server:
                         ret.append(False)
                 else:
                     if obj.owner in self.check_groups(subject_name):
-                        if int(obj.mark) == self.user.mark and right_type == 2 or \
-                            self.user.mark >= int(obj.mark) and right_type == 4 or \
-                            self.user.mark <= int(obj.mark) and right_type == 1:
+                        for group in self.group_list.groups:
+                            if group.name == obj.owner:
+                                mark = int(group.mark)
+                                break
+                        if int(obj.mark) == mark and right_type == 2 or \
+                                mark >= int(obj.mark) and right_type == 4 or \
+                                mark <= int(obj.mark) and right_type == 1:
                             ret.append(True)
                         else:
                             ret.append(False)
-                    if obj.owner not in self.check_groups(subject_name):
-                        if int(obj.mark) == self.user.mark and right_type == 2 or \
-                            self.user.mark >= int(obj.mark) and right_type == 4 or \
-                            self.user.mark <= int(obj.mark) and right_type == 1:
-                            ret.append(True)
-                        else:
-                            ret.append(False)
+                    if int(obj.mark) == self.user.mark and right_type == 2 or \
+                        self.user.mark >= int(obj.mark) and right_type == 4 or \
+                        self.user.mark <= int(obj.mark) and right_type == 1:
+                        ret.append(True)
+                    else:
+                        ret.append(False)
                 if False in ret:
                     return False
                 return True
@@ -628,6 +631,7 @@ class Server:
                     self.connection.send(str.encode(str(command_string[2] + "\t" + str(obj.mark) + "\n")))
                     break
         elif command_string[1] == '-g':
+            self.load_groups()
             for group in self.group_list.groups:
                 if group.name == command_string[2]:
                     self.connection.send(str.encode(str(command_string[2] + "\t" + str(group.mark) + "\n")))
