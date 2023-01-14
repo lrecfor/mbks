@@ -269,6 +269,9 @@ class Server:
         # append: разрешен, если метка юзера меньше, либо равна метке объекта(файла либо директории)
         # write: разрешен, если метка юзера равна метке объекта
         # read: разрешен, если метка юзера выше либо равна метке объекта
+        self.load_groups()
+        self.load_users_marks()
+        self.load_rights()
         ret = list()
         for obj in self.access_list.objects:
             if obj.name == object_name:
@@ -852,7 +855,10 @@ class Server:
             else:    # удалить пользователя из группы(-r)
                 for group in self.group_list.groups:
                     if group.name == group_name:
-                        group.participants.remove(user_name)
+                        try:
+                            group.participants.remove(user_name)
+                        except ValueError:
+                            pass
             self.save_groups()
             if flag is None:
                 self.connection.send(str.encode("Group list was updated.\n"))
@@ -871,6 +877,12 @@ class Server:
         self.save_groups()
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
+
+    def set_attribute(self):
+        pass
+
+    def set_audit(self):
+        pass
 
 
 def multi_threaded_client(connection, user):
@@ -891,7 +903,20 @@ def multi_threaded_client(connection, user):
                     sr.logout('unexpected')
                     break
                 command = data.split()[0].decode('utf-8')
-                if command == 'write':
+                if sr.group_list.find("audit", sr.user.log):
+                    if command == 'sattr':
+                        args = len(list(data.decode('utf-8').split()))
+                        if args < 3:
+                            connection.send(str.encode("Error: missing argument.\n"))
+                            continue
+                        sr.set_attribute()
+                    if command == 'saudit':
+                        args = len(list(data.decode('utf-8').split()))
+                        if args < 3:
+                            connection.send(str.encode("Error: missing argument.\n"))
+                            continue
+                        sr.set_audit()
+                elif command == 'write':
                     args = len(list(data.decode('utf-8').split()))
                     if args < 3:
                         connection.send(str.encode("Error: missing argument.\n"))
