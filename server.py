@@ -3,9 +3,11 @@ from _thread import *
 import os
 import shutil
 import hashlib
+from datetime import datetime
 import users as u
 import objects as f
 import groups as g
+import audit as a
 
 count_users = 0
 clr_sessions = False
@@ -19,6 +21,7 @@ class Server:
         self.access_list = f.Objects()
         self.group_list = g.Groups()
         self.users_marks = dict()
+        self.audit = a.Audit()
 
     def check_login(self):
         with open("passwords.txt", 'r') as _:
@@ -115,13 +118,17 @@ class Server:
                     if not self.check_login():
                         continue
                     if not self.check_session():
+                        self.audit.append_journal(str('Unsuccessful attempt to login to the account ' +
+                                                  self.user.log))
                         continue
                     log_checked = True
 
                 self.connection.send("Password: ".encode())
                 while not passwd_checked:
+                    attempt_p = 0
                     self.user.passwd = self.connection.recv(1024).decode()
                     if not self.check_password():
+                        attempt_p += 1
                         continue
                     passwd_checked = True
 
@@ -143,6 +150,8 @@ class Server:
                 self.logout('unexpected')
                 return False
         print(self.user.log + ': ' + self.user.log + " logged in successfully.")
+        self.audit.append_journal(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
+                                      ' ' + str(attempt_p)))
         self.create_directory()
         return True
 
@@ -307,9 +316,13 @@ class Server:
     def check_rights(self, subject_name, object_name, right_type):
         if not self.check_rights_dac(subject_name, object_name, right_type):
             self.connection.send(str.encode('DAC: access denied.\n'))
+            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+                                          '. DAC: access denied.'))
             return
         if not self.check_rights_mac(subject_name, object_name, right_type):
             self.connection.send(str.encode('MAC: access denied.\n'))
+            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+                                          '. MAC: access denied.'))
             return
         return True
 
@@ -878,11 +891,43 @@ class Server:
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
 
-    def set_attribute(self):
-        pass
+    # команды для просмотра и редактирования атрибутов аудита
+    def display_attribute(self, command_string):
+        command_string = command_string.split()
+        object_name = command_string[1]
+        if object_name[1] != ':':
+            object_name = self.user.dir + '\\' + object_name
+        else:
+            if "/" in object_name:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(object_name.split("/")[1:])
+            else:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(object_name.split("\\")[1:])
+        self.connection.send(str(self.audit.objects_list.get(object_name)).encode())
 
-    def set_audit(self):
-        pass
+    def set_attribute(self, command_string):
+        command_string = command_string.split()
+        object_name = command_string[1]
+        if object_name[1] != ':':
+            object_name = self.user.dir + '\\' + object_name
+        else:
+            if "/" in object_name:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(object_name.split("/")[1:])
+            else:
+                object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                              + "\\".join(object_name.split("\\")[1:])
+        self.audit.objects_list[object_name] = command_string[2]
+        self.connection.send('Attributes was changed successfully.'.encode())
+
+    def set_audit(self, command_string):
+        # возможность установить аудит определенных действий (чтение всех объектов, запись во все объекты)
+        # для выбранных субъектов (групп или пользователей)
+        object_name = command_string[1]
+        attr = command_string[2]
+        self.audit.attr[object_name] = attr
+        self.connection.send('Audit was set successfully.'.encode())
 
 
 def multi_threaded_client(connection, user):
@@ -909,14 +954,20 @@ def multi_threaded_client(connection, user):
                         if args < 3:
                             connection.send(str.encode("Error: missing argument.\n"))
                             continue
-                        sr.set_attribute()
-                    if command == 'saudit':
+                        sr.set_attribute(data.decode('utf-8'))
+                    elif command == 'dattr':
+                        args = len(list(data.decode('utf-8').split()))
+                        if args < 2:
+                            connection.send(str.encode("Error: missing argument.\n"))
+                            continue
+                        sr.display_attribute(data.decode('utf-8'))
+                    elif command == 'saudit':
                         args = len(list(data.decode('utf-8').split()))
                         if args < 3:
                             connection.send(str.encode("Error: missing argument.\n"))
                             continue
-                        sr.set_audit()
-                elif command == 'write':
+                        sr.set_audit(data.decode('utf-8'))
+                if command == 'write':
                     args = len(list(data.decode('utf-8').split()))
                     if args < 3:
                         connection.send(str.encode("Error: missing argument.\n"))
