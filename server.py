@@ -9,8 +9,6 @@ import groups as g
 
 count_users = 0
 clr_sessions = False
-mark_a = 5
-mark_o = 4
 
 
 class Server:
@@ -20,6 +18,7 @@ class Server:
         self.user = u.User()
         self.access_list = f.Objects()
         self.group_list = g.Groups()
+        self.users_marks = dict()
 
     def check_login(self):
         with open("passwords.txt", 'r') as _:
@@ -54,7 +53,7 @@ class Server:
             marks_d = dict()
             for i in range(len(marks)):
                 marks_d[marks[i].split()[0]] = marks[i].split()[1]
-            if mark <= marks_d.get(self.user.log):
+            if mark <= marks_d.get(self.user.log) and int(mark) > 0:
                 return True
         self.connection.send("Error: incorrect mark.\nMark: ".encode())
         return False
@@ -204,8 +203,41 @@ class Server:
                     else:
                         _.writelines(line)
 
-    def change_marks(self):
-        pass
+    def load_users_marks(self):
+        with open("users_marks.txt", "r") as _:
+            lines = _.readlines()
+        for line in lines:
+            self.users_marks[line.split()[0]] = line.split()[1]
+
+    def save_users_marks(self):
+        with open("users_marks.txt", "w") as _:
+            count = 0
+            for i in self.users_marks:
+                count += 1
+                if count == len(self.users_marks):
+                    _.writelines(str(i + " " + self.users_marks[i]))
+                else:
+                    _.writelines(str(i + " " + self.users_marks[i] + "\n"))
+
+    def change_marks(self, obj_type, object_name, new_mark):      #chm u|g|o object_name new_mark
+        if obj_type == "u":
+            self.load_users_marks()
+            self.users_marks[object_name] = new_mark
+            self.save_users_marks()
+        elif obj_type == "g":
+            self.load_groups()
+            for group in self.group_list.groups:
+                if group.name == object_name:
+                    group.mark = new_mark
+                    break
+            self.save_groups()
+        elif obj_type == "o":
+            self.load_rights()
+            for obj in self.access_list.objects:
+                if obj.name == object_name:
+                    obj.mark = new_mark
+                    break
+            self.save_rights()
 
     def check_rights_dac(self, subject_name, object_name, right_type):  # 2 - write, 4 - read, 6 - write+read
         if right_type == 1:
@@ -241,7 +273,7 @@ class Server:
         for obj in self.access_list.objects:
             if obj.name == object_name:
                 if obj.owner == subject_name:
-                    if obj.mark == self.user.mark and right_type == 2 or \
+                    if int(obj.mark) == self.user.mark and right_type == 2 or \
                             self.user.mark >= int(obj.mark) and right_type == 4 or \
                             self.user.mark <= int(obj.mark) and right_type == 1:
                         ret.append(True)
@@ -249,14 +281,14 @@ class Server:
                         ret.append(False)
                 else:
                     if obj.owner in self.check_groups(subject_name):
-                        if obj.mark == self.user.mark and right_type == 2 or \
+                        if int(obj.mark) == self.user.mark and right_type == 2 or \
                             self.user.mark >= int(obj.mark) and right_type == 4 or \
                             self.user.mark <= int(obj.mark) and right_type == 1:
                             ret.append(True)
                         else:
                             ret.append(False)
                     if obj.owner not in self.check_groups(subject_name):
-                        if obj.mark == self.user.mark and right_type == 2 or \
+                        if int(obj.mark) == self.user.mark and right_type == 2 or \
                             self.user.mark >= int(obj.mark) and right_type == 4 or \
                             self.user.mark <= int(obj.mark) and right_type == 1:
                             ret.append(True)
@@ -340,6 +372,8 @@ class Server:
             elif command_name == "touch":
                 self.connection.send("Usage: touch [filename] [permission] [mark]\n"
                                      "Create new file.\n".encode())
+            elif command_name == "chm":
+                self.connection.send("Usage: chm [u|g|o] [object_name] [new_mark]\n. Change OBJECT mark.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
@@ -424,9 +458,9 @@ class Server:
                 self.add_rights(self.user.log, file_name, str(666))
             else:
                 if not self.group_list.find("adm", self.user.log):
-                    dir_name = "\\".join(file_name.split("\\")[:-1])
+                    '''dir_name = "\\".join(file_name.split("\\")[:-1])
                     if not self.check_rights(self.user.log, dir_name, 2):
-                        return False
+                        return False'''
 
                     if not self.check_rights(self.user.log, file_name, 2):
                         return False
@@ -449,9 +483,9 @@ class Server:
                         + "\\".join(file_name.split("\\")[1:])
 
         if not self.group_list.find("adm", self.user.log):
-            dir_name = "\\".join(file_name.split("\\")[:-1])
+            '''dir_name = "\\".join(file_name.split("\\")[:-1])
             if not self.check_rights(self.user.log, dir_name, 4):
-                return False
+                return False'''
 
             if not self.check_rights(self.user.log, file_name, 4):
                 return False
@@ -572,7 +606,12 @@ class Server:
     def cm(self, command_string):   # cm -u|-g|-o name
         command_string = command_string.split()
         if command_string[1] == '-u':
-            self.connection.send(str.encode(str(command_string[2] + "\t" + str(self.user.mark) + "\n")))
+            if self.user.log == command_string[2]:
+                self.connection.send(str.encode(str(command_string[2] + "\t"
+                                                    + str(self.user.mark) + "\n")))
+            else:
+                self.connection.send(str.encode(str(command_string[2] + "\t"
+                                                + str(self.users_marks[command_string[2]]) + "\n")))
         elif command_string[1] == '-o':
             file_name = command_string[2]
             if file_name[1] != ':':
@@ -587,6 +626,11 @@ class Server:
             for obj in self.access_list.objects:
                 if obj.name == file_name:
                     self.connection.send(str.encode(str(command_string[2] + "\t" + str(obj.mark) + "\n")))
+                    break
+        elif command_string[1] == '-g':
+            for group in self.group_list.groups:
+                if group.name == command_string[2]:
+                    self.connection.send(str.encode(str(command_string[2] + "\t" + str(group.mark) + "\n")))
                     break
         else:
             self.connection.send(str.encode("Error: wrong argument.\n"))
@@ -611,6 +655,48 @@ class Server:
             self.connection.send(str.encode("Error: something went wrong.\n"))
         self.add_rights(self.user.log, file_name, str(command_string[2]), command_string[3])
         self.connection.send(str.encode("File was created successfully.\n"))
+
+    def chm(self, command_string):  #chm u|g|o object_name new_mark
+        self.load_users_marks()
+        self.load_groups()
+        self.load_rights()
+        command_string = command_string.split()
+        arg = command_string[1]
+        object_name = command_string[2]
+        if arg == "o":
+            if object_name[1] != ':':
+                object_name = self.user.dir + '\\' + object_name
+            else:
+                if "/" in object_name:
+                    object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                  + "\\".join(object_name.split("/")[1:])
+                else:
+                    object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
+                                  + "\\".join(object_name.split("\\")[1:])
+        new_mark = command_string[3]
+        if arg == "u":
+            if object_name not in self.users_marks.keys():
+                self.connection.send(str.encode("Error: wrong object name.\n"))
+                return False
+        elif arg == "g":
+            g_list = list()
+            for group in self.group_list.groups:
+                g_list.append(group.name)
+            if object_name not in g_list:
+                self.connection.send(str.encode("Error: wrong object name.\n"))
+                return False
+        elif arg == "o":
+            obj_list = list()
+            for obj in self.access_list.objects:
+                obj_list.append(obj.name)
+            if object_name not in obj_list:
+                self.connection.send(str.encode("Error: wrong object name.\n"))
+                return False
+        else:
+            self.connection.send(str.encode("Error: wrong argument.\n"))
+            return False
+        self.change_marks(arg, object_name, new_mark)
+        self.connection.send(str.encode("Mark was successfully changed.\n"))
 
     # admins functions
     def useradd(self):
@@ -643,7 +729,7 @@ class Server:
 
         # create permissions for home dir
         self.add_rights(new_user.log, path, str(666))    # full access only for owner and read for others subjects
-        self.add_rights(new_user.log, str(os.getcwd() + "\\D\\" + new_user.log), str(666))
+        self.add_rights(new_user.log, str(os.getcwd() + "\\D\\" + new_user.log), str(666), 4)
 
         self.groupadd(new_user.log, flag=1)
         self.usermod("usermod -g " + str(new_user.log) + " " + str(new_user.log), flag=1)
@@ -788,6 +874,7 @@ def multi_threaded_client(connection, user):
     sr = Server(connection)
     sr.load_rights()
     sr.load_groups()
+    sr.load_users_marks()
     if sr.auth():
         while True:
             try:
@@ -864,6 +951,14 @@ def multi_threaded_client(connection, user):
                         continue
                     else:
                         if not sr.touch(data.decode('utf-8')):
+                            continue
+                elif command == 'chm':
+                    args = len(list(data.decode('utf-8').split()))
+                    if args < 4:
+                        connection.send(str.encode("Error: missing argument.\n"))
+                        continue
+                    else:
+                        if not sr.chm(data.decode('utf-8')):
                             continue
                 elif sr.group_list.find("adm", sr.user.log):
                     if command == 'useradd':
