@@ -1,7 +1,9 @@
 import server as s
+from datetime import date
+from datetime import datetime
 
 
-n = 30
+n = 15
 
 
 class Audit:
@@ -13,6 +15,7 @@ class Audit:
         self.journal = list()
         self.attr = dict()
         self.count = 0
+        self.c = 0
         self.clear_journal()
         self.load_objects_list()
         self.load_subjects_list()
@@ -24,7 +27,7 @@ class Audit:
                 line = line.replace('\n', '')
                 line = line.split('|')
                 if line[0] not in self.objects_list.keys():
-                    self.objects_list[line[0]] = '111'    # read|write|append
+                    self.objects_list[line[0]] = '000'    # read|write|append
 
     def load_subjects_list(self):
         with open('users_marks.txt', 'r') as _:
@@ -33,10 +36,10 @@ class Audit:
             groups = _.readlines()
         for user in users:
             if user.split()[0] not in self.subjects_list_u.keys():
-                self.subjects_list_u[user.split()[0]] = '11'  # read|write
+                self.subjects_list_u[user.split()[0]] = '00'  # read|write
         for group in groups:
             if group.split()[0] not in self.subjects_list_g.keys():
-                self.subjects_list_g[group.split()[0]] = '11'  # read|write
+                self.subjects_list_g[group.split()[0]] = '00'  # read|write
 
     def append_journal(self, mode, user_name, file_name):
         self.check_attributes(mode, subject_name=user_name, object_name=file_name, object_=1)
@@ -53,6 +56,8 @@ class Audit:
                 self.append(str('File ' + object_name + ' was written by ' + subject_name))
                 print(str('File ' + object_name + ' was written by ' + subject_name))
             if mode == 'a' and int(attr[2]) == 1:
+                self.append(str('File ' + object_name + ' was appended by ' + subject_name))
+                print(str('File ' + object_name + ' was appended by ' + subject_name))
                 return True
         elif subject is not None:
             attr = self.subjects_list_u.get(subject_name)
@@ -76,17 +81,19 @@ class Audit:
                 print(str('Member of group ' + group + ' read file ' + file_name))
 
     def append(self, action_string):
-        with open("sessions.txt", 'r') as _:
-            logins = _.read().split()
-            if 'doom' in logins:
-                self.journal.append(action_string)
-                self.count += 1
-                if self.count == n:
-                    self.save_journal()
-                    self.count = 0
+        self.journal.append(action_string)
+        self.count += 1
+        if self.c != 0:
+            self.journal.pop(0)
+        if self.count == n:
+            self.c += 1
+            self.save_journal()
+            self.count = 0
 
     def save_journal(self):
-        with open("journal.txt", "w") as _:
+        dir_ = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\journals\\"
+        name = dir_ + str(date.today()) + "_" + datetime.now().strftime("%H-%M-%S") + ".txt"
+        with open(name, "w") as _:
             count = 0
             for line in self.journal:
                 count += 1
@@ -94,7 +101,6 @@ class Audit:
                     _.writelines(str(line))
                 else:
                     _.writelines(str(line) + "\n")
-        self.journal.pop(0)
 
     def clear_journal(self):
         self.journal.clear()

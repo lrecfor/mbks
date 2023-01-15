@@ -4,6 +4,7 @@ import os
 import shutil
 import hashlib
 from datetime import datetime
+import re
 import users as u
 import objects as f
 import groups as g
@@ -119,10 +120,8 @@ class Server:
                     if not self.check_login():
                         continue
                     if not self.check_session():
-                        self.audit.append(str('Unsuccessful attempt to login to the account ' +
-                                                  self.user.log))
-                        print(str('Unsuccessful attempt to login to the account ' +
-                                                  self.user.log))
+                        self.audit.append(str('Unsuccessful attempt to login to the account ' + self.user.log))
+                        print(str('Unsuccessful attempt to login to the account ' + self.user.log))
                         continue
                     log_checked = True
 
@@ -151,13 +150,12 @@ class Server:
             except WindowsError:
                 self.logout('unexpected')
                 return False
-        print(self.user.log + ': ' + self.user.log + " logged in successfully.")
         if self.user.log != 'doom':
-            self.audit.append(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
-                                          ' IP: 127.0.0.1 ' + str(attempt_p)))
-            print(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
-                                          ' IP: 127.0.0.1 ' + str(attempt_p)))
-            self.create_directory()
+            self.audit.append(str(self.user.log + ' logged in successfully at ' + datetime.now().strftime("%H:%M:%S") + ' IP: 127.0.0.1 ' +
+                                  'Unsuccessful attempts: ' + str(attempt_p)))
+            print(str(self.user.log + ' logged in successfully at ' + datetime.now().strftime("%H:%M:%S") + ' IP: 127.0.0.1 ' +
+                      'Unsuccessful attempts: ' + str(attempt_p)))
+        self.create_directory()
         return True
 
     def create_directory(self):
@@ -319,30 +317,21 @@ class Server:
     def check_rights(self, subject_name, object_name, right_type):
         if not self.check_rights_dac(subject_name, object_name, right_type):
             self.connection.send(str.encode('DAC: access denied.\n'))
-
-            self.audit.append(str(subject_name + ': trying to access ' + object_name +
-                                          '. DAC: access denied.'))
-            print(str(subject_name + ': trying to access ' + object_name +
-                                          '. DAC: access denied.'))
+            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
+            print(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
             return
         else:
-            self.audit.append(str(subject_name + ': trying to access ' + object_name +
-                                          '. DAC: access is allowed.'))
-            print(str(subject_name + ': trying to access ' + object_name +
-                                          '. DAC: access is allowed.'))
+            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
+            print(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
 
         if not self.check_rights_mac(subject_name, object_name, right_type):
             self.connection.send(str.encode('MAC: access denied.\n'))
-            self.audit.append(str(subject_name + ': trying to access ' + object_name +
-                                          '. MAC: access denied.'))
-            print(str(subject_name + ': trying to access ' + object_name +
-                                          '. MAC: access denied.'))
+            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
+            print(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
             return
         else:
-            self.audit.append(str(subject_name + ': trying to access ' + object_name +
-                                          '. MAC: access is allowed.'))
-            print(str(subject_name + ': trying to access ' + object_name +
-                                          '. MAC: access is allowed.'))
+            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
+            print(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
         return True
 
     def load_rights(self):
@@ -435,9 +424,15 @@ class Server:
                 for line in file:
                     _.write(line)
         if unexpected is not None:
-            print('Error: lost connection with', self.user.log + '.')
+            try:
+                self.audit.append(str('Lost connection with ' + self.user.log + ' at ' +
+                                      datetime.now().strftime("%H:%M:%S")))
+                print('Lost connection with', self.user.log + '.')
+            except TypeError:
+                pass
         else:
-            print(self.user.log + ': ' + self.user.log + ' logged out.')
+            self.audit.append(str(self.user.log + ' logged out successfully at ' + datetime.now().strftime("%H:%M:%S")))
+            print(self.user.log + ' logged out successfully at ' + datetime.now().strftime("%H:%M:%S"))
             self.connection.send(str('You successfully logged out\n'
                                      'Dou you wanna continue with another account? (y/n)\n').encode())
             data = self.connection.recv(2048)
@@ -634,9 +629,9 @@ class Server:
                             + "\\".join(file_name.split("\\")[1:])
 
             if not self.group_list.find("adm", self.user.log):
-                dir_name = "\\".join(file_name.split("\\")[:-1])
+                '''dir_name = "\\".join(file_name.split("\\")[:-1])
                 if not self.check_rights(self.user.log, dir_name, 1):
-                    return False
+                    return False'''
 
                 if not self.check_rights(self.user.log, file_name, 1):
                     return False
@@ -687,6 +682,14 @@ class Server:
     def touch(self, command_string):
         command_string = command_string.split()
         file_name = command_string[1]
+        permissions = str(command_string[2])
+        mark = command_string[3]
+        if len(file_name) < 5 or file_name[-4:] != ".txt":
+            self.connection.send('Error: wrong file name.\n'.encode())
+            return False
+        if not re.match("^[0246]+$", permissions):
+            self.connection.send('Error: wrong permissions.\n'.encode())
+            return False
         if file_name[1] != ':':
             file_name = self.user.dir + '\\' + file_name
         else:
@@ -696,12 +699,15 @@ class Server:
             else:
                 file_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                               + "\\".join(file_name.split("\\")[1:])
+        if os.path.isfile(file_name):
+            self.connection.send(str.encode("File is already exist.\n"))
+            return False
         try:
             with open(file_name, "w"):
                 pass
         except OSError:
             self.connection.send(str.encode("Error: something went wrong.\n"))
-        self.add_rights(self.user.log, file_name, str(command_string[2]), command_string[3])
+        self.add_rights(self.user.log, file_name, permissions, mark)
         self.audit.load_objects_list()
         self.connection.send(str.encode("File was created successfully.\n"))
 
@@ -922,13 +928,14 @@ class Server:
         if flag is None:
             self.connection.send(str.encode("Group list was updated.\n"))
 
-    # команды для просмотра
-    def display_attribute(self, command_string):
+    def display_attribute(self, command_string):    # dattr -u|-g|-o name
         command_string = command_string.split()
-        arg = command_string[1]
-        attr = None
-        if arg == '-o':
+        arg_ = command_string[1]
+        if arg_ == '-o':
             object_name = command_string[2]
+            if len(object_name) < 5:
+                self.connection.send('Error: wrong file name.\n'.encode())
+                return False
             if object_name[1] != ':':
                 object_name = self.user.dir + '\\' + object_name
             else:
@@ -938,23 +945,20 @@ class Server:
                 else:
                     object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                                   + "\\".join(object_name.split("\\")[1:])
-            try:
-                attr = self.audit.objects_list.get(object_name)
-            except KeyError:
+            attr = self.audit.objects_list.get(object_name)
+            if attr is None:
                 self.connection.send(str('Error: file does not exist.\n').encode())
                 return False
-        elif arg == '-u':
+        elif arg_ == '-u':
             subject_name = command_string[2]
-            try:
-                attr = self.audit.subjects_list_u.get(subject_name)
-            except KeyError:
+            attr = self.audit.subjects_list_u.get(subject_name)
+            if attr is None:
                 self.connection.send(str('Error: subject does not exist.\n').encode())
                 return False
-        elif arg == '-g':
+        elif arg_ == '-g':
             subject_name = command_string[2]
-            try:
-                attr = self.audit.subjects_list_g.get(subject_name)
-            except KeyError:
+            attr = self.audit.subjects_list_g.get(subject_name)
+            if attr is None:
                 self.connection.send(str('Error: subject does not exist.\n').encode())
                 return False
         else:
@@ -962,10 +966,16 @@ class Server:
             return False
         self.connection.send(str(attr + '\n').encode())
 
-    # и редактирования атрибутов аудита
-    def set_attribute(self, command_string):
+    def set_attribute(self, command_string):    # sattr name attr
         command_string = command_string.split()
         object_name = command_string[1]
+        attr = str(command_string[2])
+        if len(attr) != 3 or not re.match("^[01]+$", attr):
+            self.connection.send('Error: wrong attribute.\n'.encode())
+            return False
+        if len(object_name) < 5:
+            self.connection.send('Error: wrong file name.\n'.encode())
+            return False
         if object_name[1] != ':':
             object_name = self.user.dir + '\\' + object_name
         else:
@@ -975,27 +985,29 @@ class Server:
             else:
                 object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                               + "\\".join(object_name.split("\\")[1:])
-        if object_name not in self.audit.objects_list.keys():
-            self.connection.send('Error: object_ does not exist.\n'.encode())
+
+        if self.audit.objects_list.get(object_name) is None:
+            self.connection.send('Error: file does not exist.\n'.encode())
             return False
-        self.audit.objects_list[object_name] = command_string[2]
+        self.audit.objects_list[object_name] = attr
         self.connection.send('Attributes was changed successfully.\n'.encode())
 
-    def set_audit(self, command_string):
-        # возможность установить аудит определенных действий (чтение всех объектов, запись во все объекты)
-        # для выбранных субъектов (групп или пользователей)
+    def set_audit(self, command_string):    # saudit -u|-g name attr
         command_string = command_string.split()
-        arg = command_string[1]
+        arg_ = command_string[1]
         subject_name = command_string[2]
-        attr = command_string[3]
-        if arg == '-u':
-            if subject_name not in self.audit.subjects_list_u.keys():
+        attr = str(command_string[3])
+        if len(attr) != 2 or not re.match("^[01]+$", attr):
+            self.connection.send('Error: wrong attribute.\n'.encode())
+            return False
+        if arg_ == '-u':
+            if self.audit.subjects_list_u.get(subject_name) is None:
                 self.connection.send('Error: subject does not exist.\n'.encode())
                 return False
             else:
                 self.audit.subjects_list_u[subject_name] = attr
-        elif arg == '-g':
-            if subject_name not in self.audit.subjects_list_g.keys():
+        elif arg_ == '-g':
+            if self.audit.subjects_list_g.get(subject_name) is None:
                 self.connection.send('Error: subject does not exist.\n'.encode())
                 return False
             else:
@@ -1004,6 +1016,15 @@ class Server:
             self.connection.send('Error: wrong argument.'.encode())
             return False
         self.connection.send('Audit was set successfully.\n'.encode())
+
+    def display_journal(self):
+        string = ''
+        if len(self.audit.journal) == 0:
+            self.connection.send('Journal is empty.\n'.encode())
+            return
+        for note in self.audit.journal:
+            string += str(note + '\n')
+        self.connection.send(str(string).encode())
 
 
 def multi_threaded_client(connection, user, audit):
@@ -1027,21 +1048,21 @@ def multi_threaded_client(connection, user, audit):
                 if sr.group_list.find("audit", sr.user.log):
                     if command == 'sattr':
                         args = len(list(data.decode('utf-8').split()))
-                        if args < 3:
+                        if args != 3:
                             connection.send(str.encode("Error: missing argument.\n"))
                             continue
                         if not sr.set_attribute(data.decode('utf-8')):
                             continue
                     elif command == 'dattr':
                         args = len(list(data.decode('utf-8').split()))
-                        if args < 3:
+                        if args != 3:
                             connection.send(str.encode("Error: missing argument.\n"))
                             continue
                         if not sr.display_attribute(data.decode('utf-8')):
                             continue
                     elif command == 'saudit':
                         args = len(list(data.decode('utf-8').split()))
-                        if args < 4:
+                        if args != 4:
                             connection.send(str.encode("Error: missing argument.\n"))
                             continue
                         if not sr.set_audit(data.decode('utf-8')):
@@ -1119,6 +1140,8 @@ def multi_threaded_client(connection, user, audit):
                     else:
                         if not sr.chm(data.decode('utf-8')):
                             continue
+                elif command == 'cat':
+                    sr.display_journal()
                 elif sr.group_list.find("adm", sr.user.log):
                     if command == 'useradd':
                         if len(data.split()) > 1:
