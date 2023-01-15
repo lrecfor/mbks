@@ -1,13 +1,12 @@
 import server as s
 
 
-n = 10
+n = 30
 
 
 class Audit:
 
     def __init__(self):
-        # специальные атрибуты аудита у каждого объекта (например, аудит чтения, аудит записи, аудит дозаписи)
         self.objects_list = dict()
         self.subjects_list_g = dict()
         self.subjects_list_u = dict()
@@ -18,7 +17,7 @@ class Audit:
         self.load_objects_list()
         self.load_subjects_list()
 
-    def load_subjects_list(self):
+    def load_objects_list(self):
         with open('permissions.txt', 'r') as _:
             lines = _.readlines()
             for line in lines:
@@ -39,30 +38,44 @@ class Audit:
             if group.split()[0] not in self.subjects_list_g.keys():
                 self.subjects_list_g[group.split()[0]] = '11'  # read|write
 
-    def check_attribute(self, mode, object_name=None, subject_name=None, subject_type=None):
-        if mode == 'auth':
-            return True
-        if object_name is not None:
+    def append_journal(self, mode, user_name, file_name):
+        self.check_attributes(mode, subject_name=user_name, object_name=file_name, object_=1)
+        self.check_attributes(mode, subject_name=user_name, object_name=file_name, subject=1)
+        self.check_attribute_g(mode, user_name, file_name)
+
+    def check_attributes(self, mode, subject_name, object_name, subject=None, object_=None):
+        if object_ is not None:
             attr = self.objects_list.get(object_name)
-            if mode == 'r' and str(attr)[0] == 1:
+            if mode == 'r' and int(attr[0]) == 1:
+                self.append(str('File ' + object_name + ' was read by ' + subject_name))
+                print(str('File ' + object_name + ' was read by ' + subject_name))
+            if mode == 'w' and int(attr[1]) == 1:
+                self.append(str('File ' + object_name + ' was written by ' + subject_name))
+                print(str('File ' + object_name + ' was written by ' + subject_name))
+            if mode == 'a' and int(attr[2]) == 1:
                 return True
-            if mode == 'w' and str(attr)[1] == 1:
-                return True
-            if mode == 'a' and str(attr)[2] == 1:
-                return True
-        elif subject_name is not None:
-            attr = None
-            if subject_type == 'u':
-                attr = self.subjects_list_u.get(subject_name)
-            elif subject_type == 'g':
-                attr = self.subjects_list_g.get(subject_name)
-            if mode == 'r' and str(attr)[0] == 1:
-                return True
-            if mode == 'w' and str(attr)[1] == 1:
-                return True
+        elif subject is not None:
+            attr = self.subjects_list_u.get(subject_name)
+            if mode == 'r' and int(attr[0]) == 1:
+                self.append(str(subject_name + ': read file ' + object_name))
+                print(str(subject_name + ': read file ' + object_name))
+            if mode == 'w' and int(attr[1]) == 1:
+                self.append(str(subject_name + ': wrote in file ' + object_name))
+                print(str(subject_name + ': wrote in file ' + object_name))
         return False
 
-    def append_journal(self, action_string):
+    def check_attribute_g(self, mode, user_name, file_name):
+        groups = s.Server.check_groups(user_name)
+        for group in groups:
+            attr = self.subjects_list_g.get(group)
+            if mode == 'r' and int(attr[0]) == 1:
+                self.append(str('Member of group ' + group + ' read file ' + file_name))
+                print(str('Member of group ' + group + ' read file ' + file_name))
+            if mode == 'w' and int(attr[1]) == 1:
+                self.append(str('Member of group ' + group + ' wrote in file ' + file_name))
+                print(str('Member of group ' + group + ' read file ' + file_name))
+
+    def append(self, action_string):
         with open("sessions.txt", 'r') as _:
             logins = _.read().split()
             if 'doom' in logins:

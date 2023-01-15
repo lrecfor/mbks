@@ -119,7 +119,9 @@ class Server:
                     if not self.check_login():
                         continue
                     if not self.check_session():
-                        self.audit.append_journal(str('Unsuccessful attempt to login to the account ' +
+                        self.audit.append(str('Unsuccessful attempt to login to the account ' +
+                                                  self.user.log))
+                        print(str('Unsuccessful attempt to login to the account ' +
                                                   self.user.log))
                         continue
                     log_checked = True
@@ -151,7 +153,9 @@ class Server:
                 return False
         print(self.user.log + ': ' + self.user.log + " logged in successfully.")
         if self.user.log != 'doom':
-            self.audit.append_journal(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
+            self.audit.append(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
+                                          ' IP: 127.0.0.1 ' + str(attempt_p)))
+            print(str(self.user.log + ' ' + datetime.now().strftime("%H:%M:%S") +
                                           ' IP: 127.0.0.1 ' + str(attempt_p)))
             self.create_directory()
         return True
@@ -315,22 +319,30 @@ class Server:
     def check_rights(self, subject_name, object_name, right_type):
         if not self.check_rights_dac(subject_name, object_name, right_type):
             self.connection.send(str.encode('DAC: access denied.\n'))
-            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+
+            self.audit.append(str(subject_name + ': trying to access ' + object_name +
+                                          '. DAC: access denied.'))
+            print(str(subject_name + ': trying to access ' + object_name +
                                           '. DAC: access denied.'))
             return
         else:
-            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+            self.audit.append(str(subject_name + ': trying to access ' + object_name +
+                                          '. DAC: access is allowed.'))
+            print(str(subject_name + ': trying to access ' + object_name +
                                           '. DAC: access is allowed.'))
 
         if not self.check_rights_mac(subject_name, object_name, right_type):
             self.connection.send(str.encode('MAC: access denied.\n'))
-            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+            self.audit.append(str(subject_name + ': trying to access ' + object_name +
+                                          '. MAC: access denied.'))
+            print(str(subject_name + ': trying to access ' + object_name +
                                           '. MAC: access denied.'))
             return
         else:
-            self.audit.append_journal(str(subject_name + ': trying to access ' + object_name +
+            self.audit.append(str(subject_name + ': trying to access ' + object_name +
                                           '. MAC: access is allowed.'))
-
+            print(str(subject_name + ': trying to access ' + object_name +
+                                          '. MAC: access is allowed.'))
         return True
 
     def load_rights(self):
@@ -389,10 +401,10 @@ class Server:
             elif command_name == "rm":
                 self.connection.send("Usage: rm [filename]\nDelete the file.\n".encode())
             elif command_name == "rr":
-                self.connection.send("Usage: rr [objectName]\nPrint the permissions for the object.\n".encode())
+                self.connection.send("Usage: rr [objectName]\nPrint the permissions for the object_.\n".encode())
             elif command_name == "chmod":
                 self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\n"
-                                     "Change permission for object.\n".encode())
+                                     "Change permission for object_.\n".encode())
             elif command_name == "cm":
                 self.connection.send("Usage: cm [u|o] [objectName]\n. Display mark of OBJECT.\n".encode())
             elif command_name == "touch":
@@ -495,6 +507,8 @@ class Server:
                         return False
             with open(file_name, "w") as _:
                 _.write(text)
+
+            self.audit.append_journal('w', self.user.log, file_name)
             self.connection.send(str.encode('File was written successfully.\n'))
         return True
 
@@ -532,6 +546,7 @@ class Server:
             return False
         self.connection.send(str.encode(str(len(text))))
         self.connection.send(str(text).encode('utf-8'))
+        self.audit.append_journal('r', self.user.log, file_name)
 
     def rm(self, command_string):
         command_string = command_string.split()
@@ -552,7 +567,7 @@ class Server:
         self.delete_rights(file_name)
         self.connection.send(str.encode("File was deleted successfully.\n"))
 
-    def rr(self, command_string):   # check rights for object
+    def rr(self, command_string):   # check rights for object_
         command_string = command_string.split()
         object_name = command_string[1]
         if object_name[1] != ':':
@@ -569,7 +584,7 @@ class Server:
             rights = "".join(list(rights))
             self.connection.send(str.encode(rights))
         else:
-            self.connection.send(str.encode("Error: no such object.\n"))
+            self.connection.send(str.encode("Error: no such object_.\n"))
 
     def chmod(self, command_string):    # chmod object_name u|g|o permission
         command_string = command_string.split()
@@ -631,6 +646,7 @@ class Server:
                 return False
             with open(file_name, "a") as _:
                 _.write(text)
+            self.audit.append_journal('a', self.user.log, file_name)
             self.connection.send(str.encode('File was written successfully.\n'))
         return True
 
@@ -709,21 +725,21 @@ class Server:
         new_mark = command_string[3]
         if arg == "u":
             if object_name not in self.users_marks.keys():
-                self.connection.send(str.encode("Error: wrong object name.\n"))
+                self.connection.send(str.encode("Error: wrong object_ name.\n"))
                 return False
         elif arg == "g":
             g_list = list()
             for group in self.group_list.groups:
                 g_list.append(group.name)
             if object_name not in g_list:
-                self.connection.send(str.encode("Error: wrong object name.\n"))
+                self.connection.send(str.encode("Error: wrong object_ name.\n"))
                 return False
         elif arg == "o":
             obj_list = list()
             for obj in self.access_list.objects:
                 obj_list.append(obj.name)
             if object_name not in obj_list:
-                self.connection.send(str.encode("Error: wrong object name.\n"))
+                self.connection.send(str.encode("Error: wrong object_ name.\n"))
                 return False
         else:
             self.connection.send(str.encode("Error: wrong argument.\n"))
@@ -960,7 +976,7 @@ class Server:
                 object_name = "C:\\Users\\Дана Иманкулова\\projects\\python\\mbks\\D\\" \
                               + "\\".join(object_name.split("\\")[1:])
         if object_name not in self.audit.objects_list.keys():
-            self.connection.send('Error: object does not exist.\n'.encode())
+            self.connection.send('Error: object_ does not exist.\n'.encode())
             return False
         self.audit.objects_list[object_name] = command_string[2]
         self.connection.send('Attributes was changed successfully.\n'.encode())
