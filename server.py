@@ -316,22 +316,26 @@ class Server:
 
     def check_rights(self, subject_name, object_name, right_type):
         if not self.check_rights_dac(subject_name, object_name, right_type):
-            self.connection.send(str.encode('DAC: access denied.\n'))
-            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
-            print(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
+            if self.user.log != "doom":
+                self.connection.send(str.encode('DAC: access denied.\n'))
+                self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
+                print(str(subject_name + ': trying to access ' + object_name + '. DAC: access denied.'))
             return
         else:
-            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
-            print(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
+            if self.user.log != "doom":
+                self.audit.append(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
+                print(str(subject_name + ': trying to access ' + object_name + '. DAC: access is allowed.'))
 
         if not self.check_rights_mac(subject_name, object_name, right_type):
             self.connection.send(str.encode('MAC: access denied.\n'))
-            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
-            print(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
+            if self.user.log != "doom":
+                self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
+                print(str(subject_name + ': trying to access ' + object_name + '. MAC: access denied.'))
             return
         else:
-            self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
-            print(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
+            if self.user.log != "doom":
+                self.audit.append(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
+                print(str(subject_name + ': trying to access ' + object_name + '. MAC: access is allowed.'))
         return True
 
     def load_rights(self):
@@ -393,14 +397,14 @@ class Server:
                 self.connection.send("Usage: rr [objectName]\nPrint the permissions for the object_.\n".encode())
             elif command_name == "chmod":
                 self.connection.send("Usage: chmod [objectName] [u|g|o] [permission]\n"
-                                     "Change permission for object_.\n".encode())
+                                     "Change permission for OBJECT.\n".encode())
             elif command_name == "cm":
                 self.connection.send("Usage: cm [u|o] [objectName]\n. Display mark of OBJECT.\n".encode())
             elif command_name == "touch":
-                self.connection.send("Usage: touch [filename] [permission] [mark]\n"
+                self.connection.send("Usage: touch [filename] [permission] [mark].\n"
                                      "Create new file.\n".encode())
             elif command_name == "chm":
-                self.connection.send("Usage: chm [u|g|o] [object_name] [new_mark]\n. Change OBJECT mark.\n".encode())
+                self.connection.send("Usage: chm [u|g|o] [object_name] [new_mark].\n Change OBJECT mark.\n".encode())
             else:
                 string = 'Error: command ' + command_name + ' not found.\n'
                 self.connection.send(string.encode())
