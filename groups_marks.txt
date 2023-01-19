@@ -1,0 +1,7 @@
+root 3
+kiko 4
+adm 5
+all 0
+audit 0
+gigi 4
+doom 5

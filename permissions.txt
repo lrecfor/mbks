@@ -1,0 +1,15 @@
+C:\Users\Дана Иманкулова\projects\python\mbks\D\root|root|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\root\home|root|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\root\home\1.txt|root|6|6|6|5
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko|kiko|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko\home|kiko|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko\home\kiko1.txt|kiko|6|6|6|0
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko\home\2.txt|kiko|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\gigi\home|gigi|6|4|4|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\gigi|gigi|6|4|4|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko\home\5.txt|kiko|6|4|4|0
+C:\Users\Дана Иманкулова\projects\python\mbks\D\kiko\home\7.txt|kiko|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\doom|doom|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\doom\home|doom|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\doom\home\1.txt|doom|6|6|6|4
+C:\Users\Дана Иманкулова\projects\python\mbks\D\gigi\home\4.txt|gigi|1|2|3|6

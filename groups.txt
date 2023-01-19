@@ -1,0 +1,7 @@
+root: root
+doom: doom
+kiko: kiko gigi
+adm: root
+all: root kiko
+audit: doom
+gigi: gigi
